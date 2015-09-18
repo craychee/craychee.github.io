@@ -56,9 +56,9 @@ And I feel the need to remind you of this because it often feels like you don't 
 **Worse**: You put off getting this information for months.
 * **Bad**: You do not know how and where you will host the project.  
 **Worse**: You put off making a decision about this (even with guidance) until the last two weeks of the project.
-* **Bad**: You went to a design and got a beautiful design without consulting me, your engineer.  
-**Worse**: The designer doesn't even know what your business does or what your content looks like.
-* **Bad**: You want to spend our limited time together discussing carousels, slideshows, popup boxes, and other enriched content that currently does not exist for your business and for which none of your customers are asking for but are disengaged when we discuss if, at all, you want your uses to authenticate.  
+* **Bad**: You went to a designer and got a beautiful design but did so without consulting me, your engineer.  
+**Worse**: The designer doesn't know what your business does or what your content looks like.
+* **Bad**: You want to spend our limited time together discussing carousels, slideshows, popup boxes, and other enriched content that currently does not exist for your business and for which none of your customers are asking for but are disengaged when we discuss if, at all, you want your users to ever login.  
 **Worse** We never discuss what the experience of anyone besides the anonymous user (someone who does not log in) will be like.
 
 Here is the secret to success for both you and I: the more you understand what your business is, the more I understand from you what your business is and put that logic into machine executable code, *the more your customers understand what your business does.* And that's success.
