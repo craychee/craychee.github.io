@@ -23,7 +23,7 @@ You came to me, knowingly or not, for this purpose. You want to attract, inform,
 
 I need you to reflect with me on the consequences of this.
 
-Think about what it takes to build a house. Think about all the otherwise invasive information about your daily life that you would want the person designing it to know about you: how many people live with you now and how many you expect might live with you in the future; whether you want to engage with people while cooking; if you want dim, intimate rooms or bright rooms full of light; if you entertain and in what way, etc. You would understand that the more that *you understand* about the kind of life you want to live and were able to communicate that information, the more the home that would accommodate that life.
+Think about what it takes to build a house. Think about all the otherwise invasive information about your daily life that you would want the person designing it to know about you: how many people live with you now and how many you expect might live with you in the future; whether you want to engage with people while cooking; if you want dim, intimate rooms or bright rooms full of light; if you entertain and in what way, etc. You would get that the more that *you understand* about the kind of life you want to live and were able to communicate that information, the more likely it is that the home would accommodate that life.
 
 Now think about your business does. If you needed to hand off your entire business to someone, what would they need to know? Maybe something like this:
 
