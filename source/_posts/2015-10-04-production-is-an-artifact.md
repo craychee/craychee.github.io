@@ -4,7 +4,7 @@ subtitle: Ship Artifacts, not development tools.
 tags:
 - content strategy
 categories:
-description: Ship artifacts, not development tools. I give a brief history of the evolution of Drupal's project repository and provide by manifesto for the separation of production and development code.
+description: Ship artifacts, not development tools. I give a brief history of the evolution of Drupal's project repository and provide my manifesto for the separation of production and development code.
 ---
 
 **Note: This article is adapted from a presentation I gave at [NYCCamp](http://nyccamp.org/). It was improved greatly by the thoughtful feedback from my former colleagues: Larry Garfield, Steve Persch, Bec White, and Arthur Foelsche.**
