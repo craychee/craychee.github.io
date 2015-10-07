@@ -102,7 +102,7 @@ update.php
 web.config
 xmlrpc.php
 ```
-$
+
 The tools that you use to build the thing are not the things that you should deploy. You deploy only the thing that your tools build.
 
 I want to talk about how our Drupal projects' repositories got to the state they are in now and why our production repositories should be different.
