@@ -4,16 +4,16 @@ subtitle: Ship Artifacts, not development tools.
 tags:
 - content strategy
 categories:
-description: The thing that you put onto production should be the product of the thing that you build with development. You should ship only artifacts, not development tools. I give a brief history of the evolution of Drupal's project repository and provide by manifesto for the separation of production and development code.
+description: Ship artifacts, not development tools. I give a brief history of the evolution of Drupal's project repository and provide by manifesto for the separation of production and development code.
 ---
 
 **Note: This article is adapted from a presentation I gave at [NYCCamp](http://nyccamp.org/). It was improved greatly by the thoughtful feedback from my former colleagues: Larry Garfield, Steve Persch, Bec White, and Arthur Foelsche.**
 
 ##TL;DR
-This is what development looks like:
+This is what development looks like:  
 ![Development conveyor belt](/img/tools_chain.png)
 
-This is what a production artifact looks like:
+This is what a production artifact looks like:  
 ![Shipping box](/img/shipment_box_product.png)
 
 This is what development markup looks like:
@@ -34,7 +34,7 @@ section {
 }
 ```
 
-This is what production artifact of that markup looks like:
+This is what a production artifact of that markup looks like:
 
 ```css
 section {
@@ -52,7 +52,7 @@ section .class-one. button {
 }
 ```
 
-This is what your Drupal project's development root might look like:
+This is what your Drupal project's development repository might look like:
 
 ```
 Vagrantfile
@@ -102,8 +102,8 @@ update.php
 web.config
 xmlrpc.php
 ```
-
-The tools that you use to build the thing are not the things that you should deploy. You deploy the thing that your tools build.
+$
+The tools that you use to build the thing are not the things that you should deploy. You deploy only the thing that your tools build.
 
 I want to talk about how our Drupal projects' repositories got to the state they are in now and why our production repositories should be different.
 
@@ -147,26 +147,57 @@ This is, for the unintiated, the root of Drupal's filesystem and a copy of the d
 
 ####Problem: Codebase was married to the database.
 ####Solution: The features module.
-There were a lot of problems with a repository like the one described above. Aside from the "what database is the 'right' one?" problem (that is, what was the last copy of the database that contains all the expected changes) and the problems with working with multiple developers on one canonical database, clients could not make changes to their content while development was in progress. Worse, changes could not be rolled back and commits were meaningless without the database that cooresponded to them. Supporting a project deployed this way was impossible.
+There were a lot of problems with a repository like the one described above. Aside from the "what database is the 'right' one?" problem (that is, what was the last copy of the database that contains all the expected changes) and the problems with working with multiple developers on one canonical database, clients could not make changes to their content while development was in progress. Worse, changes could not be rolled back and commits were meaningless without the database that cooresponded to them. 
+
+Supporting a project deployed this way was impossible.
 
 All sorts of silly things were done to get around this terrible mess. But the best and most widely adopted solution to this was to use the features module: exporting the configuration into code so that the database was not relied upon any longer to be the sole repository of this essential information.
 
 Now a deployable Drupal repository might look something like this:
-[drupal root indicating the existence of features]
+
+```
+CHANGELOG.txt
+COPYRIGHT.txt
+INSTALL.mysql.txt
+INSTALL.pgsql.txt
+INSTALL.sqlite.txt
+INSTALL.txt
+LICENSE.txt
+MAINTAINERS.txt
+README.txt
+UPGRADE.txt
+authorize.php
+cron.php
+includes/
+index.php
+install.php
+misc/
+modules/
+profiles/
+robots.txt
+scripts/
+*sites/all/features*
+themes/
+update.php
+web.config
+xmlrpc.php
+```
+
+Similar but, crucially, no database.
 
 ####Problem: It was not clear when and how to apply changes to the database.
 ####Solution: Build scripts.
 
 Eliminating the database from the deployment release cycle was a massive improvement. Content could be added and other information could be updated without any interruption. Deployments made changes to the database in code and could even then be rolled back.
 
-But applying these changes to the database required that the someone in the deployment process execute a series of commands. Typically these commands looked something like:
+But applying these changes to the database required that someone in the deployment process execute a series of commands. Typically these commands looked something like:
 
 ```
 drush update-database
 drush feature-revert all
 drush clear-caches all
 ```
-These commands ensured that the database was now in something at least closer to a known-state. Trouble started when the user relied upon to execute the code would forget a step (as humans are want to do) or the developers working in teams wouldn't apply these steps when developing code, meaning that they weren't working in known-states. In other words, we put the changes that needed to be made to the database in code finally but we didn't put instructions on how to apply those changes into code.
+These commands ensured that the database was now in something at least closer to a known-state. Trouble started when the user relied upon to execute the code would forget a step (as humans are want to do) or the developers working in teams wouldn't apply these steps when developing code, meaning that they weren't working in known-states. In other words, we put the changes that needed to be made to the database in code but we didn't put instructions on how to apply those changes into code (update hooks got you closer but you still needed to apply them).
 
 So the solution was a build script: some way of making the changes that developers were expecting explicit. But the place for this script was not inside the Drupal root. It didn't make sense to have the project root be the Drupal root anymore so another directory was added and a Drupal project began to look something like:
 
@@ -175,9 +206,11 @@ build-scripts/
 drupal-root/
 ```
 
+Now we had one directory for our Drupal root and one directory for scripts to act upon it.
+
 ####Problem: We weren't building on an environment that resembled production.
 ####Solution: Virtualization.
-With the Drupal root now liberated from the project root, it was easier to see that a project's deliverable (a fully configured Drupal) was separate from the tools that created and supported that deliverable. We now felt free to add tools into the repository that were not part of the deliverable but would help us deliver great code.
+Now we were finally making our work explicit, consistent, and executable. And with the Drupal root now liberated from the project root, it was easier to see that a project's deliverable (a fully configured Drupal) was separate from the tools that created and supported that deliverable. We now felt free to add tools into the repository that were not part of the deliverable but would help us deliver great code.
 
 One of the biggest pain points in development was that we weren't building in an environment that resembled production nor anything else. In fact, many of us weren't sure what our environment resembled. It was just whatever version of our LAMP (WAMP/XAMP) stack we happened to be on. This meant that not only did we have no assurance that our code would work on the environment to which it was destined but we also had no assurance that it would work on our colleagues' own environment.
 
@@ -190,10 +223,11 @@ Vagrantfile
 build-scripts/
 drupal-root/
 ```
+Along with our Drupal root and instructions on how to enforce changes to the database with it, we defined the environment in which the project was meant to live.
 
 ####Problem: Testing Drupal took ages and provided little useful information.
 ####Solution: System testing.
-Now that we could finally be assured that we were working on a known-state (specifically, a production environment), we could start being proactive about predicting what how our code was going to behave there. Moreover, we could ensure that our code kept behaving as predicted throughout the development cycle.
+Now that we could finally be assured that we were working on a known-state (specifically, a production environment), we could start being proactive about predicting how our code was going to behave there. Moreover, we could ensure that our code kept behaving as predicted throughout the development cycle.
 
 This meant testing Drupal.
 
@@ -203,7 +237,7 @@ And so we use system tests.
 
 System tests are high level tests run on the fully bootstrapped, integrated system to verify that the entire codebase meets some set of defined requirements. System tests are not unit tests. They aren't evaluating whether a piece of code outputs the expected results given a defined set of inputs. Rather, they are testing (much like a user would) if some action (usually by a user) yields the expected result. System tests are often done at the highest level possible: the browser.
 
-Various tools were experimented in our determination to test Drupal. Consensus is starting to form around one tool in particular: [Behat](http://docs.behat.org/en/v3.0/) and its [Drupal Extension](http://behat-drupal-extension.readthedocs.org/en/latest/intro.html).
+Various tools were experimented with in our determination to test Drupal. Consensus is starting to form around one tool in particular: [Behat](http://docs.behat.org/en/v3.0/) and its [Drupal Extension](http://behat-drupal-extension.readthedocs.org/en/latest/intro.html).
 
 Testing Drupal meant that we needed to host the requirements for the tooling to test Drupal as well as the tests themselves. For Behat, this meant a `composer.json` (and its coresponding `composer.lock`) to add Behat to the project, a `behat.yml` to configure Behat, as well as the tests themselves, which live inside a `features` directory.
 
@@ -218,16 +252,17 @@ features/
 build-scripts/
 drupal-root/
 ```
+At last, we had tests to define done and ensure that we stayed done throughout the project's lifecycle.
 
-####Problem: We were lugging around both Drupal core and contributed modules--code we swore to never touch--inside our repository.
+####Problem: We were lugging around both Drupal core and contributed modules inside our repository.
 ####Solution: Composer
-The importance of adding a `composer.json` to a Drupal project to add a requirement like Behat cannot be overlooked. At the point that we started to add dependencies to the project via a dependency management tool rather than by committing the entire dependency to the project, we took a good hard look at what we were doing inside that Drupal root. What about all these contributed modules that we were using in our project? Aren't they dependencies? What about all the libraries and themes? What about Drupal core itself?
+The importance of adding a `composer.json` to a Drupal project to add a requirement like Behat cannot be overlooked. At the point that we started to add dependencies to the project via a dependency management tool rather than by committing the entire dependency to the project, we took a good hard look at what we were doing inside that Drupal root. What about all these contributed modules that we were using in our project? Aren't they dependencies? What about all the libraries and themes? What about Drupal core itself? Hadn't we all sworn a sacred oath never to touch these things? Why were we tempting fate?
 
 Drush make had been around for a while but with Drupal 8 adopting composer and the usefulness of composer to add other helpful libraries (like guzzle or twig), why not use composer to manage components like Drupal contrib and Drupal core?
 
-And so began the most important change in the history of a Drupal project: the Drupal root was no longer part of the project. **The Drupal root is assembled from dependencies, build instructions, and the inclusion of custom code and configuration.**
+And so began the most important change in the history of a Drupal project: the Drupal root is no longer part of the project.
 
-The Drupal root no longer is a part of the Drupal project repository. Instead, a Drupal project repository contains the dependency file (composer), features, custom code, and instructions on how to assemble the Drupal root from those parts.
+Instead, a Drupal project repository contains the dependency file (composer), features, custom code, and instructions on how to assemble the Drupal root from those parts. **The Drupal root is assembled from dependencies, build instructions, and the inclusion of custom code and configuration.**
 
 A modern Drupal repository now looks something like:
 
@@ -260,7 +295,7 @@ Fortunately, there is a well-established method to assemble code inside a dispos
 
 Using a CI server, you can put your deployment plan into code (which probably will include pulling down the current production database and making changes to it), ensure that it executed properly, and then deploy only the *artifact* of what your deployment created: in this case, the Drupal root. It makes no sense to deploy the composer files, the tests, the build script, the Vagrantfile, or any other helpers. Your Drupal root is your only shippable product. Deploy only that.
 
-I describe this workflow in some detail here:
+I describe this workflow in some detail here: [No Excuses: Automated Deployment](/blog/2015/08/08/no-excuses-part5-deployment/)
 
 So now, while our *development*'s project repository might look like the above, our shippable Drupal project looks like:
 
@@ -309,15 +344,15 @@ Here is another provision: for the professional Drupal developer, Production is 
 
 Here is my manifesto:  
 ####1. Development code should be readable as instructions for humans. Production code should be readable by a web service.
-Make your development repository easily understood by human beings who are working on it. Make your production code easily read by the computer. Your production code is compiled.
+Make your development repository easily understood by human beings who are working on it. Make your production code easily read by the computer. Your production code is fully compiled before it hits production.
 
 ####2. We should depend on our platform hosts to host the thing, not the build the thing.
 Our platform hosts do not need to support the building of an application. The building of the application should occur before the thing hits the host.
 
 ####3. Devs should be opinionated about development. Hosts should be opinionated about production.
-Developers like us should form strong opinions (but hold the loosely) about how to deliver a project. We should continually seek tools and techniques to build and support our projects. And we should not rely on our hosts to make techniques available before we adopted them.  
-On the other side: hosts should have strong opinions (held loosely) about how best to host the project. Hosts should refuse to support unsupported versions of packages. Hosts should make system decisions with a view to supporting sites in the wild.  
+Developers like us should form strong opinions (but hold them loosely) about how to deliver a project. We should continually seek tools and techniques to build and support our projects. And we should not rely on our hosts to make techniques available before we adopted them.  
+
+On the other side: hosts should have strong opinions (held loosely) about how best to host the project. Hosts should refuse to support unsupported versions of packages. Hosts should make system decisions with a view to supporting sites in the wild. They shouldn't be fighting entropy by accommodating every developer's strong opinions. Rather, they should be enforcing their own.
 
 ####4. No dev dependency should be installed on a prod.  
 No behat. No compass. No composer. Not ever.
-
