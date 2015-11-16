@@ -212,7 +212,7 @@ And now under the `require` section, add:
 
 Make sure that you have completely removed `www` from the project. We are going to put the creation of that root under composer's control.
 
-Now run `composer update`.
+Now run `composer update`, followed by `build/install.sh`.
 
 Check the contents of your newly created `www` to ensure that you have your Drupal root. Or better still, visit `http://192.168.33.99/`, log in, and ensure that `features` is available for you to enable now.
 
