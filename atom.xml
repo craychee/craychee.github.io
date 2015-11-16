@@ -1,0 +1,1508 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <title><![CDATA[Blog of Michelle Krejci]]></title>
+    <link href="/atom.xml" rel="self"/>
+    <link href="/"/>
+    <updated>2015-11-16T06:00:26+00:00</updated>
+    <id>/</id>
+        <generator uri="http://sculpin.io/">Sculpin</generator>
+            <entry>
+            <title type="html"><![CDATA[Production is an Artifact of Development]]></title>
+            <link href="/blog/2015/10/04/production-is-an-artifact"/>
+            <updated>2015-10-04T00:00:00+00:00</updated>
+            <id>/blog/2015/10/04/production-is-an-artifact</id>
+            <content type="html"><![CDATA[<p><strong>Note: This article is adapted from a presentation I gave at <a href="http://nyccamp.org/">NYCCamp</a>. It was improved greatly by the thoughtful feedback from my former colleagues: Larry Garfield, Steve Persch, Bec White, and Arthur Foelsche.</strong></p>
+
+<h2 id="tl%3Bdr">TL;DR</h2>
+
+<p>This is what development looks like:<br />
+<img src="/img/tools_chain.png" alt="Development conveyor belt" /></p>
+
+<p>This is what a production artifact looks like:<br />
+<img src="/img/shipment_box_product.png" alt="Shipping box" /></p>
+
+<p>This is what development markup looks like:</p>
+
+<pre><code class="sass">section {
+    height: 100px;
+    width: 100px;
+
+    .class-one {
+      height: 50px;
+      width: 50px;
+
+      .button {
+        color: #074e68;
+       }
+     }
+}
+</code></pre>
+
+<p>This is what a production artifact of that markup looks like:</p>
+
+<pre><code class="css">section {
+  height: 100px;
+  width: 100px;
+}
+
+section .class-one {
+  height: 50px;
+  width: 50px;
+}
+
+section .class-one. button {
+  color: #074e68;
+}
+</code></pre>
+
+<p>This is what your Drupal project's development repository might look like:</p>
+
+<pre><code>Vagrantfile
+behat.yml
+circle.yml
+composer.json
+composer.lock
+PROJECT.info
+PROJECT.module
+README.md
+build/
+features/
+cnf/
+bin/
+www/
+vendor/
+modules/
+themes/
+</code></pre>
+
+<p>This is what your Drupal project's production artifact <em>should</em> look like:</p>
+
+<pre><code>CHANGELOG.txt
+COPYRIGHT.txt
+INSTALL.mysql.txt
+INSTALL.pgsql.txt
+INSTALL.sqlite.txt
+INSTALL.txt
+LICENSE.txt
+MAINTAINERS.txt
+README.txt
+UPGRADE.txt
+authorize.php
+cron.php
+includes/
+index.php
+install.php
+misc/
+modules/
+profiles/
+robots.txt
+scripts/
+sites/
+themes/
+update.php
+web.config
+xmlrpc.php
+</code></pre>
+
+<p>The tools that you use to build the thing are not the things that you should deploy. You deploy only the thing that your tools build.</p>
+
+<p>I want to talk about how our Drupal projects' repositories got to the state they are in now and why our production repositories should be different.</p>
+
+<h2 id="a-brief%2C-opinionated%2C-subjective-history-of-a-shippable-drupal-project">A Brief, Opinionated, Subjective History of a Shippable Drupal Project</h2>
+
+<p>For most of Drupal's life, almost certainly up until Drupal 7 was released, this is what a Drupal deployable looked like:</p>
+
+<pre><code>CHANGELOG.txt
+COPYRIGHT.txt
+INSTALL.mysql.txt
+INSTALL.pgsql.txt
+INSTALL.sqlite.txt
+INSTALL.txt
+LICENSE.txt
+MAINTAINERS.txt
+README.txt
+UPGRADE.txt
+authorize.php
+cron.php
+includes/
+index.php
+install.php
+misc/
+modules/
+profiles/
+robots.txt
+scripts/
+sites/
+themes/
+update.php
+web.config
+xmlrpc.php
+</code></pre>
+
+<p><strong><em>AND</em> a database:</strong></p>
+
+<pre><code>my_db.sql.gz
+</code></pre>
+
+<p>This is, for the unintiated, the root of Drupal's filesystem and a copy of the database. Within the Drupal root, there were a series of contributed modules located somewhere within the Drupal filesystem and almost certainly a few custom modules and/or libraries and a bunch of css files and templates. The specifics around which of these modules were enabled and how they were configured and what theme to use was information that was stored inside the database. In order to deploy Drupal satisfactorily, both the codebase and the database were required.</p>
+
+<h4 id="problem%3A-codebase-was-married-to-the-database.">Problem: Codebase was married to the database.</h4>
+
+<h4 id="solution%3A-the-features-module.">Solution: The features module.</h4>
+
+<p>There were a lot of problems with a repository like the one described above. Aside from the "what database is the 'right' one?" problem (that is, what was the last copy of the database that contains all the expected changes) and the problems with working with multiple developers on one canonical database, clients could not make changes to their content while development was in progress. Worse, changes could not be rolled back and commits were meaningless without the database that cooresponded to them.</p>
+
+<p>Supporting a project deployed this way was impossible.</p>
+
+<p>All sorts of silly things were done to get around this terrible mess. But the best and most widely adopted solution to this was to use the features module: exporting the configuration into code so that the database was not relied upon any longer to be the sole repository of this essential information.</p>
+
+<p>Now a deployable Drupal repository might look something like this:</p>
+
+<pre><code>CHANGELOG.txt
+COPYRIGHT.txt
+INSTALL.mysql.txt
+INSTALL.pgsql.txt
+INSTALL.sqlite.txt
+INSTALL.txt
+LICENSE.txt
+MAINTAINERS.txt
+README.txt
+UPGRADE.txt
+authorize.php
+cron.php
+includes/
+index.php
+install.php
+misc/
+modules/
+profiles/
+robots.txt
+scripts/
+*sites/all/features*
+themes/
+update.php
+web.config
+xmlrpc.php
+</code></pre>
+
+<p>Similar but, crucially, no database.</p>
+
+<h4 id="problem%3A-it-was-not-clear-when-and-how-to-apply-changes-to-the-database.">Problem: It was not clear when and how to apply changes to the database.</h4>
+
+<h4 id="solution%3A-build-scripts.">Solution: Build scripts.</h4>
+
+<p>Eliminating the database from the deployment release cycle was a massive improvement. Content could be added and other information could be updated without any interruption. Deployments made changes to the database in code and could even then be rolled back.</p>
+
+<p>But applying these changes to the database required that someone in the deployment process execute a series of commands. Typically these commands looked something like:</p>
+
+<pre><code>drush update-database
+drush feature-revert all
+drush clear-caches all
+</code></pre>
+
+<p>These commands ensured that the database was now in something at least closer to a known-state. Trouble started when the user relied upon to execute the code would forget a step (as humans are want to do) or the developers working in teams wouldn't apply these steps when developing code, meaning that they weren't working in known-states. In other words, we put the changes that needed to be made to the database in code but we didn't put instructions on how to apply those changes into code (update hooks got you closer but you still needed to apply them).</p>
+
+<p>So the solution was a build script: some way of making the changes that developers were expecting explicit. But the place for this script was not inside the Drupal root. It didn't make sense to have the project root be the Drupal root anymore so another directory was added and a Drupal project began to look something like:</p>
+
+<pre><code>build-scripts/
+drupal-root/
+</code></pre>
+
+<p>Now we had one directory for our Drupal root and one directory for scripts to act upon it.</p>
+
+<h4 id="problem%3A-we-weren%27t-building-on-an-environment-that-resembled-production.">Problem: We weren't building on an environment that resembled production.</h4>
+
+<h4 id="solution%3A-virtualization.">Solution: Virtualization.</h4>
+
+<p>Now we were finally making our work explicit, consistent, and executable. And with the Drupal root now liberated from the project root, it was easier to see that a project's deliverable (a fully configured Drupal) was separate from the tools that created and supported that deliverable. We now felt free to add tools into the repository that were not part of the deliverable but would help us deliver great code.</p>
+
+<p>One of the biggest pain points in development was that we weren't building in an environment that resembled production nor anything else. In fact, many of us weren't sure what our environment resembled. It was just whatever version of our LAMP (WAMP/XAMP) stack we happened to be on. This meant that not only did we have no assurance that our code would work on the environment to which it was destined but we also had no assurance that it would work on our colleagues' own environment.</p>
+
+<p>We could resolve this through virtualization: define the destination system in code, ensure that all development is done inside that system. This is best done with <a href="https://docs.vagrantup.com/v2/">vagrant</a>. And so a <code>Vagrantfile</code> was thus added to our project's repository.</p>
+
+<p>Now our project's repository looked something like:</p>
+
+<pre><code>Vagrantfile
+build-scripts/
+drupal-root/
+</code></pre>
+
+<p>Along with our Drupal root and instructions on how to enforce changes to the database with it, we defined the environment in which the project was meant to live.</p>
+
+<h4 id="problem%3A-testing-drupal-took-ages-and-provided-little-useful-information.">Problem: Testing Drupal took ages and provided little useful information.</h4>
+
+<h4 id="solution%3A-system-testing.">Solution: System testing.</h4>
+
+<p>Now that we could finally be assured that we were working on a known-state (specifically, a production environment), we could start being proactive about predicting how our code was going to behave there. Moreover, we could ensure that our code kept behaving as predicted throughout the development cycle.</p>
+
+<p>This meant testing Drupal.</p>
+
+<p>The topic of testing Drupal had been (and continues to be) one of the most excuses-ridden subjects: Drupal takes too long to test (I dare you to run all of the Simpletests inside Drupal core alone), Drupal is too tightly coupled to test properly, most shops are too small for testing to add value, it takes too long to write test, and so on. Drupal doesn't do itself any favors here but if we are going to continue to be professional Drupal developers, we must accept the limitations and find a path forward to build reliable, consistent, predictable code.</p>
+
+<p>And so we use system tests.</p>
+
+<p>System tests are high level tests run on the fully bootstrapped, integrated system to verify that the entire codebase meets some set of defined requirements. System tests are not unit tests. They aren't evaluating whether a piece of code outputs the expected results given a defined set of inputs. Rather, they are testing (much like a user would) if some action (usually by a user) yields the expected result. System tests are often done at the highest level possible: the browser.</p>
+
+<p>Various tools were experimented with in our determination to test Drupal. Consensus is starting to form around one tool in particular: <a href="http://docs.behat.org/en/v3.0/">Behat</a> and its <a href="http://behat-drupal-extension.readthedocs.org/en/latest/intro.html">Drupal Extension</a>.</p>
+
+<p>Testing Drupal meant that we needed to host the requirements for the tooling to test Drupal as well as the tests themselves. For Behat, this meant a <code>composer.json</code> (and its coresponding <code>composer.lock</code>) to add Behat to the project, a <code>behat.yml</code> to configure Behat, as well as the tests themselves, which live inside a <code>features</code> directory.</p>
+
+<p>And lo, a Drupal project now started to look like this:</p>
+
+<pre><code>behat.yml
+composer.json
+composer.lock
+Vagrantfile
+features/
+build-scripts/
+drupal-root/
+</code></pre>
+
+<p>At last, we had tests to define done and ensure that we stayed done throughout the project's lifecycle.</p>
+
+<h4 id="problem%3A-we-were-lugging-around-both-drupal-core-and-contributed-modules-inside-our-repository.">Problem: We were lugging around both Drupal core and contributed modules inside our repository.</h4>
+
+<h4 id="solution%3A-composer">Solution: Composer</h4>
+
+<p>The importance of adding a <code>composer.json</code> to a Drupal project to add a requirement like Behat cannot be overlooked. At the point that we started to add dependencies to the project via a dependency management tool rather than by committing the entire dependency to the project, we took a good hard look at what we were doing inside that Drupal root. What about all these contributed modules that we were using in our project? Aren't they dependencies? What about all the libraries and themes? What about Drupal core itself? Hadn't we all sworn a sacred oath never to touch these things? Why were we tempting fate?</p>
+
+<p>Drush make had been around for a while but with Drupal 8 adopting composer and the usefulness of composer to add other helpful libraries (like guzzle or twig), why not use composer to manage components like Drupal contrib and Drupal core?</p>
+
+<p>And so began the most important change in the history of a Drupal project: the Drupal root is no longer part of the project.</p>
+
+<p>Instead, a Drupal project repository contains the dependency file (composer), features, custom code, and instructions on how to assemble the Drupal root from those parts. <strong>The Drupal root is assembled from dependencies, build instructions, and the inclusion of custom code and configuration.</strong></p>
+
+<p>A modern Drupal repository now looks something like:</p>
+
+<pre><code>custom/
+themes/
+behat.yml
+composer.json
+composer.lock
+Vagrantfile
+features/
+build-scripts/
+</code></pre>
+
+<h4 id="problem%3A-installing-dependencies-with-composer-on-a-production-environment-is-dangerous.">Problem: Installing dependencies with Composer on a production environment is dangerous.</h4>
+
+<h4 id="solution%3A-leverage-a-continuous-integration-server-to-build-and-deploy...-a-drupal-root-codebase-and-a-database.">Solution: Leverage a continuous integration server to build and deploy... a Drupal root codebase and a database.</h4>
+
+<p>Using composer to manage Drupal's dependencies is the way forward. It's sane. It's manageable. It's awesome. If you aren't ready to accept this for Drupal 7, you will have no choice with Drupal 8.</p>
+
+<p>If I sound defensive it's because I am now about to list reasons why running <code>composer install</code> (which you need to do if you want all those juicy dependencies) is incredibly fragile and should never, ever be done on a production environment:</p>
+
+<p><strong>Retrieving meta-data and dependencies eats a ton of ram.</strong> Composer needs to go out and find the dependencies of your dependencies and the dependencies of those dependencies and so on until it has everything that everything needs. This can take a while and can be a major drain on resources.<br />
+<strong>Composer will fetch dependencies from a lot of sources.</strong> Sources from all over the Internet, which can also change without notice, that you probably don't want to trust.<br />
+<strong>Rate limits on github.</strong> Github will ask for authentication after hitting that limit. Ask your sysadmins how they feel about adding an authentication token to the production envionment.<br />
+<strong>Your deployment could take longer than expected.</strong> For all the reasons above and many others, you may have planned on a 15 minute downtime to deploy your Drupal but that 15 minutes could easily turn into 30, 45, or worse.<br />
+<strong>Your dependencies could disappear.</strong> You are referencing metadata inside composer and the truth is that many maintainers of projects aren't the greatest at semantic versioning. Your dependency could be removed without notice.</p>
+
+<p>For more thoughts on using Composer to install dependencies, I highly recommend <a href="https://twitter.com/ppetermann">@ppetermann</a>'s insightful <a href="https://devedge.wordpress.com/2015/05/16/a-few-thoughts-about-composer-and-how-people-use-it/">blog post</a>.</p>
+
+<p>Fortunately, there is a well-established method to assemble code inside a disposable environment: using a Continuous Integration server (CI server) such as <a href="https://travis-ci.org/">Travis</a>, <a href="https://circleci.com/">Circle</a>, or <a href="https://jenkins-ci.org/">Jenkins</a>. On an environment such as the ones that those providers create on a process such as a Pull Request or a merge with master, assembling the Drupal root can be done safely.</p>
+
+<p>Using a CI server, you can put your deployment plan into code (which probably will include pulling down the current production database and making changes to it), ensure that it executed properly, and then deploy only the <em>artifact</em> of what your deployment created: in this case, the Drupal root. It makes no sense to deploy the composer files, the tests, the build script, the Vagrantfile, or any other helpers. Your Drupal root is your only shippable product. Deploy only that.</p>
+
+<p>I describe this workflow in some detail here: <a href="/blog/2015/08/08/no-excuses-part5-deployment/">No Excuses: Automated Deployment</a></p>
+
+<p>So now, while our <em>development</em>'s project repository might look like the above, our shippable Drupal project looks like:</p>
+
+<pre><code>CHANGELOG.txt
+COPYRIGHT.txt
+INSTALL.mysql.txt
+INSTALL.pgsql.txt
+INSTALL.sqlite.txt
+INSTALL.txt
+LICENSE.txt
+MAINTAINERS.txt
+README.txt
+UPGRADE.txt
+authorize.php
+cron.php
+includes/
+index.php
+install.php
+misc/
+modules/
+profiles/
+robots.txt
+scripts/
+sites/
+themes/
+update.php
+web.config
+xmlrpc.php
+</code></pre>
+
+<p><strong><em>AND</em> a database:</strong></p>
+
+<pre><code>my_db.sql.gz
+</code></pre>
+
+<p>Obligatory pretentious quote:</p>
+
+<blockquote>
+  <p>We shall not cease from exploration, and the end of all our exploring will be to arrive where we started and know the place for the first time.
+  - T.S. Eliot</p>
+</blockquote>
+
+<h2 id="deploy-only-an-artifact-of-your-build-process%3A-a-manifesto">Deploy only an artifact of your build process: a Manifesto</h2>
+
+<p>What I am advocating for here is a strict separation of Development and Production code. Development contains the tools and the parts to build the thing. Production contains only the thing.</p>
+
+<p>Here is another provision: for the professional Drupal developer, Production is the first environment in which your client can access the project. Period. Not the environment that your client's client (their end user) access the project but <em>your</em> client. Your clients should only interact with production-ready code. This may be confusing because often the environment that your client's first begin interacting with the code is called <em>development</em> (as on Pantheon or Acquia) but for you, that's production. <strong>Every deployment should be a full dress rehearsal.</strong> It is your client's responsibility to decide from there when the show is ready to go live.</p>
+
+<p>Here is my manifesto:</p>
+
+<h4 id="1.-development-code-should-be-readable-as-instructions-for-humans.-production-code-should-be-readable-by-a-web-service.">1. Development code should be readable as instructions for humans. Production code should be readable by a web service.</h4>
+
+<p>Make your development repository easily understood by human beings who are working on it. Make your production code easily read by the computer. Your production code is fully compiled before it hits production.</p>
+
+<h4 id="2.-we-should-depend-on-our-platform-hosts-to-host-the-thing%2C-not-the-build-the-thing.">2. We should depend on our platform hosts to host the thing, not the build the thing.</h4>
+
+<p>Our platform hosts do not need to support the building of an application. The building of the application should occur before the thing hits the host.</p>
+
+<h4 id="3.-devs-should-be-opinionated-about-development.-hosts-should-be-opinionated-about-production.">3. Devs should be opinionated about development. Hosts should be opinionated about production.</h4>
+
+<p>Developers like us should form strong opinions (but hold them loosely) about how to deliver a project. We should continually seek tools and techniques to build and support our projects. And we should not rely on our hosts to make techniques available before we adopted them.</p>
+
+<p>On the other side: hosts should have strong opinions (held loosely) about how best to host the project. Hosts should refuse to support unsupported versions of packages. Hosts should make system decisions with a view to supporting sites in the wild. They shouldn't be fighting entropy by accommodating every developer's strong opinions. Rather, they should be enforcing their own.</p>
+
+<h4 id="4.-no-dev-dependency-should-be-installed-on-a-prod.">4. No dev dependency should be installed on a prod.</h4>
+
+<p>No behat. No compass. No composer. Not ever.</p>
+]]></content>
+        </entry>
+            <entry>
+            <title type="html"><![CDATA[An Open Letter to My Clients]]></title>
+            <link href="/blog/2015/09/17/are-you-ready-to-hire-an-engineer"/>
+            <updated>2015-09-17T00:00:00+00:00</updated>
+            <id>/blog/2015/09/17/are-you-ready-to-hire-an-engineer</id>
+            <content type="html"><![CDATA[<p>I have been thinking a lot about our relationship lately. I hope you know how much I appreciate you and how much I want the best for you.</p>
+
+<p>I know we have struggled to communicate over the years. We haven't done a good job telling each other what we need from each other. Frankly <em>I</em> feel--my therapist says I should use "I statements" when having this conversation with you--that I am not being heard. But when I reflect on why I feel that way, I must acknowledge that I have done a terrible job explaining what I need from you and why.</p>
+
+<p>So here it is, at long last. This is what I have wanted to tell you for long.</p>
+
+<h4 id="i-need-to-understand-what-you-do-to-a-level-of-specificity-that-i-can-teach-a-computer-how-to-do-it-for-you.">I need to understand what you do to a level of specificity that I can teach a computer how to do it for you.</h4>
+
+<p>This is why I ask all of those punctilious questions. This is why I say things that annoy you like "what do your users find valuable about this?" I am building a business machine for you.</p>
+
+<p>Literally. I am making your business into a machine capable of executing your business logic without constant human intervention.</p>
+
+<p>You came to me, knowingly or not, for this purpose. You want to attract, inform, track, serve, and respond to your users in a predictable, reliable way with minimal to no interaction with a human being on your staff. This means that you want me to teach a machine how to run your business for you.</p>
+
+<p>I need you to reflect with me on the consequences of this.</p>
+
+<p>Think about what it takes to build a house. Think about all the otherwise invasive information about your daily life that you would want the person designing it to know about you: how many people live with you now and how many you expect might live with you in the future; whether you want to engage with people while cooking; if you want dim, intimate rooms or bright rooms full of light; if you entertain and in what way, etc. You would get that the more that <em>you understand</em> about the kind of life you want to live and were able to communicate that information, the more likely it is that the home would accommodate that life.</p>
+
+<p>Now think about your business does. If you needed to hand off your entire business to someone, what would they need to know? Maybe something like this:</p>
+
+<ul>
+<li>Who your customers are.</li>
+<li>What you offer them.</li>
+<li>Why you are better at offering it than your competitors. </li>
+</ul>
+
+<p>To support this essential information, you would likely show this person (who will be executing your business for you) supplementary texts. Maybe you would introduce this person to one of your customers. You would share the kind of information you have about this customer and provide a story about what your business does for them. Maybe you would show them content like a news item and explain its value. You would probably want to go into great detail about your products and services and what your customers like about them.</p>
+
+<p>And this is just to maintain the business you already have.</p>
+
+<p>But you also want this person (or machine) whom you are handling the execution of a large portion of your business to <em>improve</em> your business. To make it provide additional services, conveniences, enriched contextual information, and marketing enhancements (the system remembers who you are, what you like, what other people like, how the content you are looking at now relates to other matters, etc.). But all this--and this is really important--<strong>cannot happen until we have implemented your business as it exists now</strong>.</p>
+
+<p>I know this last bit is particularly hard because when you thought about getting a computer to run your business for you, you thought about all the great things a computer can do so much more efficiently and reliably than us mere mortals.</p>
+
+<p>But remember that <strong>it is your job to tell me what your business does and it is my job to make a computer do it.</strong> You don't have to figure that last part out at all and I certainly can't figure out the first part without you.</p>
+
+<p>But here is the last thing I wanted to tell you:</p>
+
+<h4 id="i-really-want-this-project-to-succeed.">I really want this project to succeed.</h4>
+
+<p>Completing this project successfully is just as much tied to my livelihood and professional pride as it is yours. You are trying to make your business a functioning, reliable machine. It is my business to make this so.</p>
+
+<p>This might seem like an obvious point but I think that you forget just how invested I am in making your project succeed. Your project is my full time job--the thing I think about when I am biking to and from work and on walks to the grocery store. I have strokes of genius in the shower. I am dedicating somewhere between 3 months and two years on this. I care.</p>
+
+<p>And I feel the need to remind you of this because it often feels like you don't want to succeed. I know it may hurt to hear this but here are some things you do that make me feel like you want to fail:</p>
+
+<ul>
+<li><strong>Bad</strong>: You do not have examples of each of the pieces of content that you intend to make available on the site.<br />
+<strong>Worse</strong>: You don't understand why the person who is building the infrastructure to create, manage, and display this content would need this so urgently when, you insist, you can just "add the content yourself later".</li>
+<li><strong>Bad</strong>: You do not know how to access your current database or code base.<br />
+<strong>Worse</strong>: You put off getting this information for months.</li>
+<li><strong>Bad</strong>: You do not know how and where you will host the project.<br />
+<strong>Worse</strong>: You put off making a decision about this (even with guidance) until the last two weeks of the project.</li>
+<li><strong>Bad</strong>: You went to a designer and got a beautiful design but did so without consulting me, your engineer.<br />
+<strong>Worse</strong>: The designer doesn't know what your business does or what your content looks like.</li>
+<li><strong>Bad</strong>: You want to spend our limited time together discussing carousels, slideshows, popup boxes, and other enriched content that currently does not exist for your business and for which none of your customers are asking for but are disengaged when we discuss if, at all, you want your users to ever login.<br />
+<strong>Worse</strong> We never discuss what the experience of anyone besides the anonymous user (someone who does not log in) will be like.</li>
+</ul>
+
+<p>Here is the secret to success for both you and I: the more you understand what your business is, the more I understand from you what your business is and put that logic into machine executable code, <em>the more your customers understand what your business does.</em> And that's success.</p>
+
+<h4 id="ensuring-our-relationship-starts-off-right">Ensuring our relationship starts off right</h4>
+
+<p>I am not going to leave you in the dark about my feelings any more though. I have created for you (us) a checklist called: <strong><a href="https://gist.github.com/craychee/543389d35c4b766239e7">Are you Ready to Hire an Engineer?</a></strong>. Using this document, we can help be sure that we are ready to commit to a relationship together.</p>
+]]></content>
+        </entry>
+            <entry>
+            <title type="html"><![CDATA[Introducing the No Excuses Series]]></title>
+            <link href="/blog/2015/08/23/no-excuses-introduction"/>
+            <updated>2015-08-23T00:00:00+00:00</updated>
+            <id>/blog/2015/08/23/no-excuses-introduction</id>
+            <content type="html"><![CDATA[<p>A few weeks ago I had the pleasure of talking about Drupal and Continuous Integration with Mike Anello, Ted Bowman, and Ryan Price over at <a href="http://drupaleasy.com/podcast/2015/08/drupaleasy-podcast-160-shamed-michelle-krejci-automated-drupal-deployment">DrupalEasy</a>. During that conversation, I maintained that the barrier of entry is now low enough that there is now no excuse for not implementing a continuous integration workflow.</p>
+
+<p>To prove it, I created the No Excuses series. In five parts, I walk through the basics to get a CI workflow set up for your Drupal process.</p>
+
+<p>In this series, I share how to establish a known-state (via ansible and vagrant), how to make your project build explicit and executable (via bash), how to add testing to define and verify a feature's completion (via behat), how to automate the build and the tests with a CI server (via CircleCI), and finally, how to automate the deployment.</p>
+
+<p><strong>Part I: <a href="/blog/2015/05/20/no-excuse-config-management-drupal/">Drupal-optomized Environment Config with (Ph)Ansible and Vagrant</a></strong><br />
+<strong>Part II: <a href="/blog/2015/07/29/no-excuses-part2-drupal-config/">Making your Drupal Build explicit and executable</a></strong><br />
+<strong>Part III: <a href="/blog/2015/08/01/no-excuses-part3-composer/">Build drupal with Composer</a></strong><br />
+<strong>Part IV: <a href="/blog/2015/08/04/no-excuses-part4-testing/">System testing Drupal with a BDD tool (Behat)</a></strong><br />
+<strong>Part V: <a href="/blog/2015/08/08/no-excuses-part5-deployment/">Automated Deployment</a></strong></p>
+
+<p>The series was written to be followed in order but you could, of course, take from it what is most immediately applicable to you.</p>
+
+<p>This series is meant to be the first iteration: the quickest way that I could come up with to get these tools in your hands so that you can start doing what you know you should be doing. I have vague plans to follow-up with an iteration two, where I go back and improve upon everything we have done here, but my experience has also shown me that once developers have the tools and know how to use them, they can improve upon their usage easily themselves.</p>
+
+<p>I would love to know what you think of the series and what you would like to see in a possible feature series. Feel free to reach out to me over <a href="https://twitter.com/dev_meshev">twitter</a> or via email below.</p>
+
+<p><strong>UPDATE</strong> <a href="http://jeffgeerling.com/">Jeff Geerling</a> is offering a coupon for 50% off the recommended price for his recently published book <em>Ansible for DevOps: Server and configuration management for humans</em> to reader's of this series who want to learn more about Ansible: <a href="http://leanpub.com/ansible-for-devops/c/zDAUa4QMP1CL">http://leanpub.com/ansible-for-devops/c/zDAUa4QMP1CL)</a>. If I do my job right, that will be everyone.</p>
+]]></content>
+        </entry>
+            <entry>
+            <title type="html"><![CDATA[No Excuses Part V: Automated Deployment]]></title>
+            <link href="/blog/2015/08/08/no-excuses-part5-deployment"/>
+            <updated>2015-08-08T00:00:00+00:00</updated>
+            <id>/blog/2015/08/08/no-excuses-part5-deployment</id>
+            <content type="html"><![CDATA[<p><strong>NOTE</strong> This post is the conclusion of a series that included <a href="/blog/2015/05/20/no-excuse-config-management-drupal">No Excuses Part I</a>, <a href="/blog/2015/07/29/no-excuses-part2-drupal-config">No Excuses Part II</a>, <a href="http://craychee.io/blog/2015/08/01/no-excuses-part3-composer/">No Excuses Part III</a>, and <a href="http://craychee.io/blog/2015/08/04/no-excuses-part4-testing/">No Excuses Part IV</a>.</p>
+
+<p>You're not legit until the only thing that's deploying your code is a CI server.</p>
+
+<p>In this the last part of our series we are going to put all of our work making our build executable and repeatable and testable to its fullest fruition: with automated deployment.</p>
+
+<h3 id="step-one%3A-create-a-pantheon-site.">Step One: Create a Pantheon site.</h3>
+
+<p>Head over to <a href="https://pantheon.io/">Pantheon</a> and create a free account if you don't have one.</p>
+
+<p>Once you have an account, create a site by instantiated a Drupal 7 from scratch. Don't overthink it. We just need the database to be generated. (There must be another way around this but this is the best way that I have found to instantiate a site on Pantheon where what I need is a database instance and a codebase.)</p>
+
+<p>When your new site is set up and you are taken to the dashboard for the new project, make sure that you set <code>Connection Mode</code> to "git".</p>
+
+<h3 id="step-two%3A-generate-ssh-key">Step Two: Generate SSH Key</h3>
+
+<p>We are going to create an ssh key just for deployment. We will put the private key on circleCI and the public key on Pantheon. Then those two can talk it out.</p>
+
+<p>From the command line, run <code>ssh-keygen</code>. Don't save the file into <code>.ssh</code>. You can call it whatever you would like. I will call mine <code>deploy_key</code>.</p>
+
+<p><strong>Do not</strong> create a passphrase.</p>
+
+<p>On Pantheon, go to <em>My Dashboard</em> >> <em>Account</em> >> <em>SSH Keys</em> and save your ssh key ending in <code>.pub</code>. Over on CircleCI, go to <em>Settings</em> >> <em>Permissions</em> >> <em>SSH Permissions</em> and add your private key (the one that does not end in .pub).</p>
+
+<p>You are all set up for the two to talk to each other. You can delete the ssh keys on your local machine.</p>
+
+<h3 id="step-three%3A-define-what-should-go-on-production-and-what-shouldn%27t">Step Three: Define what should go on production and what shouldn't</h3>
+
+<p>Since we are going to deploy (and <em>only</em> deploy) the code that belongs on production to Pantheon, we need to separate out code that shouldn't be on production into Composer's <code>require-dev</code> section.</p>
+
+<p>For example, I don't need Drush or the Drupal Behat Extension on production so my <code>composer.json</code> will look like:</p>
+
+<pre><code class="json">[...]
+    "require": {
+        "pantheon-systems/drops-7": "7.38",
+        "craychee/rootcanal": "dev-master",
+        "drupal/features": "~7.2"
+    },
+    "require-dev": {
+        "drush/drush": "7.*",
+        "drupal/drupal-extension": "~3.0"
+    },
+[...]
+</code></pre>
+
+<h3 id="step-four%3A-add-custom-variables-to-circleci">Step Four: Add Custom Variables to CircleCi</h3>
+
+<p>Over on CircleCI, go to <em>Settings</em> >> <em>Tweaks</em> >> <em>Environment variables</em>.</p>
+
+<p><img src="/img/circleci_custom_variables.jpg" alt="CircleCI Environment Variable screenshot" /></p>
+
+<p><strong>Create and Save the following variables:</strong><br />
+PANTHEON_EMAIL: This should be the email of either your account or another account that also has access to the Pantheon project you just set up.<br />
+PANTHEON_PASSWORD: This should be the password of either your account or another account that also has access to the Pantheon project you just set up.<br />
+PANTHEON_CODE This should be the repository URL for the project that you created on Pantheon, ending in <code>.git</code>. You can get to this by clicking on "Connection Info" over at Pantheon. Note that when you copy the repository, it will have the name of your site appended to it after <code>.git</code>. Remove that bit.</p>
+
+<p><strong>Note</strong> that my instructions above have you deploy with your Pantheon user account. If you work on a team or for a dev shop, you should consider creating a separate user that has access to your sites that you use only for deployment.</p>
+
+<p><strong>UPDATE</strong>
+A lot of people have written to say that they have had problems when composer installs on circleci. That's because GitHub will ask for an authentication token if it's being hit with too many requests (its rate limit).
+Here is the workaround.</p>
+
+<p>Visit your Github account. Under your settings, click <em>Personal Access Tokens</em>. Generate a token scoped to just "repo" like this one:</p>
+
+<p><img src="/img/github_token.png" alt="Github Token Generate screenshot" /></p>
+
+<p>After you clicked the <em>Generate Token</em> button, copy the new token. Create and save the following new variable:<br />
+GITHUB_TOKEN: The token you just copied to your clipboard.</p>
+
+<p>Add this at the top of your dependencies in your <code>circle.yml</code>:
+<code>- composer config --global github-oauth.github.com $GITHUB_TOKEN</code>
+<a href="https://github.com/craychee/no-excuses-drupal/blob/master/circle.yml#L7">Here</a> is my example.</p>
+
+<h3 id="step-five%3A-add-a-deployment-script">Step Five: Add a deployment script</h3>
+
+<p>Inside the <code>bin</code> directory, create a file called <code>deploy</code> and add these contents:</p>
+
+<pre><code class="sh">#!/bin/bash
+
+set -e
+
+# Get Pantheon's Command Line Tool, terminus.
+sudo curl https://github.com/pantheon-systems/cli/releases/download/0.9.2/terminus.phar -L -o /usr/local/bin/terminus
+sudo chmod +x /usr/local/bin/terminus
+
+# Log into terminus.
+terminus auth login $PANTHEON_EMAIL --password=$PANTHEON_PASSWORD
+
+# Clone deployment repository.
+git clone $PANTHEON_CODE pantheon
+
+# Set variables
+path=$(dirname "$0")
+base=$(cd $path/.. &amp;&amp; pwd)
+pantheon=$base/pantheon
+git="( $base/pantheon &amp;&amp; git $git_flags)"
+
+# Build the deployment artifact.
+sudo rm -f $base/cnf/settings.php
+sudo mv $base/cnf/pantheon.settings.php $base/cnf/settings.php
+
+# Use this bit only if you are using my method of using Composer.
+$base/bin/rootcanal --prod
+
+# Add deployment artifact to the repository.
+rm -Rf $pantheon/*
+mv $base/www/* $pantheon/
+
+# configure git env
+git config --global user.email $PANTHEON_EMAIL
+git config --global user.name $CIRCLE_PROJECT_USERNAME
+
+# checkout publish branch
+(cd $pantheon ; git checkout -b publish)
+(cd $pantheon ; git branch -D master)
+(cd $pantheon ; git checkout -b master)
+
+# commit build
+(cd $pantheon ; git add -Af)
+(cd $pantheon ; git commit -m "Successful verified merge of $CIRCLE_PROJECT_USERNAME $CIRCLE_SHA1.")
+
+# push to Pantheon
+(cd $pantheon ; git push -f origin master)
+</code></pre>
+
+<p><strong>NOTE:</strong> Since the original publication of this post, I have updated this script to remove a completely unnecessary expect call.</p>
+
+<p>This script gets <a href="https://github.com/pantheon-systems/cli">terminus</a>, Pantheon's command line tool, gets Pantheon's repository, rebuilds the Drupal root by coping everything over (use only if you are building Drupal with Composer using my suggested method, per <a href="blog/2015/08/01/no-excuses-part3-composer/">Part III</a>), and then forceably commits only the Drupal root (not any of your provisioning or your <code>Vagrantfile</code>) to its repository. Your production repository will be a separate repository that is just an <em>artifact</em> of development.</p>
+
+<p>Make sure that you update your <code>.gitignore</code> (if you are ignoring any executables in <code>bin</code>) so that you can ensure that this file is saved to your repository.</p>
+
+<p>Now create a file called <code>pantheon.settings.php</code> and save it inside of <code>cnf</code> with the following contents:</p>
+
+<pre><code class="php">&lt;?php
+require_once DRUPAL_ROOT . '/sites/default/vendor/autoload.php';
+</code></pre>
+
+<h3 id="step-six%3A-add-deployment-to-circleci">Step Six: Add Deployment to CircleCI</h3>
+
+<p>Add this to the bottom of your <code>circle.yml</code>:</p>
+
+<pre><code class="yml">[...]
+
+deployment:
+  pantheon:
+    branch: master
+    commands:
+      - build/install.sh
+      - composer install --no-dev --no-scripts
+      - bin/deploy
+      - mysqldump -u ubuntu circle_test &gt; pantheon.sql
+      - terminus drush sqlc &lt; pantheon.sql --site=no-excuses --env=dev
+      - terminus site clear-caches --site=no-excuses --env=dev
+</code></pre>
+
+<p>Where I am passing the attribute <code>--site=no-excuses</code>, you should replace it with your Pantheon's site name.</p>
+
+<p>What this bit tells circleCI is that on a successful merge to master (all tests pass), rebuild composer's vendor leaving out projects that are only needed for dev (like drush and behat), rebuild the Drupal project (in case there is any content or users remaining from the Behat tests, which can happen), commit and push only the resulting Drupal root to Pantheon's repository that is tagged with the hash of the development commit that builds it, and then push the database to Pantheon.</p>
+
+<p>And with that, you have defined your deployment and the conditions that a deployment will occur, made it executable, and automated it.</p>
+
+<p>Congratulations. You have achieved the gold standard of a development workflow.</p>
+
+<p><strong>Want to make sure you followed all of my instructions?</strong>
+You can view/fork my no-excuses-example <a href="https://github.com/craychee/no-excuses-Drupal/tree/0.5.0">here</a>.</p>
+
+<h4 id="great-...now-what%3F">Great ...Now what?</h4>
+
+<p>At the end of this series, you have been introduced to a lot of tools that can be iterated on endlessly. You could go back to Part I, where we made our system explicit, and ensure that your environment has more of the tools that you need. Perhaps instead of a bash script that makes your build explicit (as we did in Part II), you want to use <a href="http://gulpjs.com/">Gulp</a> or <a href="http://gruntjs.com/">Grunt</a> or <a href="http://drupalconsole.com/">Drupal Console</a> to manage your build. Have Ansible install the requirements for the project of your choice.</p>
+
+<p>There is always more that you can do with testing. Consider taking on not just a test driven development approach but a behavior driven development approach (see Dan North's seminal <a href="http://dannorth.net/introducing-bdd/">blog post</a> to help understand the distinction) using Behat. Imagine if all of your features were built with human readable tests. Imagine running those tests throughout the project's lifecycle. You can do that now. You have the tools and the automation.</p>
+
+<p>Once you have good system test coverage, build your custom code with unit tests (I highly recommend <a href="http://www.phpspec.net/en/latest/">phpspec</a>). Add accessibility tests with tools like <a href="http://a11yproject.com/">a11y</a>. Add visual regression testing with <a href="https://github.com/BBC-News/wraith">Wraith</a>. Find tools that help you define done, get you to done, and ensure that you stay done.</p>
+
+<p>You may (and almost certainly will) find that this way of working is so much better that you will want to convert existing projects into this model. Since we have abstracted the deployment process into a separate repository from the production repository, it will be easier for you to add this tooling around an existing repository that can then only contain the resulting product of your process.</p>
+
+<p>I will be writing more about these and other topics in the coming months. Stayed tuned and tell me what you are working on or what you would like to see.</p>
+]]></content>
+        </entry>
+            <entry>
+            <title type="html"><![CDATA[No Excuses Part IV: System testing Drupal with a BDD tool (Behat)]]></title>
+            <link href="/blog/2015/08/04/no-excuses-part4-testing"/>
+            <updated>2015-08-04T00:00:00+00:00</updated>
+            <id>/blog/2015/08/04/no-excuses-part4-testing</id>
+            <content type="html"><![CDATA[<p><strong>NOTE</strong> This post is a continuation of <a href="/blog/2015/05/20/no-excuse-config-management-drupal">No Excuses Part I</a>, <a href="/blog/2015/07/29/no-excuses-part2-drupal-config">No Excuses Part II</a>, and <a href="http://craychee.io/blog/2015/08/01/no-excuses-part3-composer/">No Excuses Part III</a>.</p>
+
+<p>Continuous Integration has become synonymous with testing and automation. In order to merge and push code together on a tight iteration, assurances and checkpoints must be built into the system.</p>
+
+<p>But there are other reasons to test. Among them, defining 'done' with a client and translating the definition of done into code so that we can know when a feature is complete. It adds focus to the process, documentation to the project, and regression testing to the project's lifecycle. Making the definition of done executable means you can ask "is it done?" and "has it stayed done?".</p>
+
+<p><a href="http://behat.readthedocs.org/en/v3.0/">Behat</a>, a <a href="http://dannorth.net/whats-in-a-story/">Behavior Driven Development</a> tool, supports this goal.</p>
+
+<p>Today we are going to set Behat up, add a test, and run that test with an automated CI server with every push to github.</p>
+
+<p>Hang onto your butts, this one is going to be an awesomely wild adventure.</p>
+
+<h3 id="step-one%3A-install-and-configure-behat-the-drupal-extension">Step One: Install and Configure Behat (the Drupal Extension)</h3>
+
+<p>With composer already installed (thanks, Ansible), and a <code>composer.json</code> already defined in our project root (see <a href="https://getcomposer.org/doc/01-basic-usage.md#composer-json-project-setup">here</a> if you skipped No Excuses Part III), we only need to add Behat as a dependency.</p>
+
+<p>Update your <code>composer.json</code> so that it includes:</p>
+
+<pre><code class="json">[...]
+  "require": {
+  [...]
+      "drush/drush": "7.*",
+      "drupal/drupal-extension": "~3.0"
+   },
+   "config": {
+      "bin-dir": "bin/"
+   }
+[...]
+</code></pre>
+
+<p>From inside your running vagrant box (<code>vagrant up</code> if you shut it down, and <code>vagrant ssh</code> if you are no longer logged in), run <code>composer update</code>. The Drupal Behat Extension and its dependencies will be downloaded. We will get to why we added drush in a bit.</p>
+
+<p>Now we need to add a <a href="http://behat.readthedocs.org/en/v3.0/guides/6.profiles.html">configuration file</a> for Behat. This is what ours will look like:</p>
+
+<pre><code class="yml">default:
+  suites:
+    default:
+      contexts:
+      - FeatureContext
+      - Drupal\DrupalExtension\Context\DrupalContext
+      - Drupal\DrupalExtension\Context\RawDrupalContext
+      - Drupal\DrupalExtension\Context\MinkContext
+      - Drupal\DrupalExtension\Context\MessageContext
+      - Drupal\DrupalExtension\Context\DrushContext
+  extensions:
+    Behat\MinkExtension:
+      goutte: ~
+      selenium2:
+        wd_host: "http://127.0.0.1:8643/wd/hub"
+      base_url: http://localhost
+    Drupal\DrupalExtension:
+      blackbox: ~
+      api_driver: 'drupal'
+      drupal:
+        drupal_root: 'www'
+</code></pre>
+
+<p>Add these contents into a file called <code>behat.yml</code> and save it in your project root.</p>
+
+<p>We just installed the Drupal Extension for Behat. You can and should read more about the extension <a href="http://behat-drupal-extension.readthedocs.org/en/latest/index.html">here</a>. But "I haven't read the docs yet" is an excuse that hasn't held you up before so why start now?</p>
+
+<p>Now run <code>bin/behat --init</code> inside your vagrant box. If successful, you should see:</p>
+
+<pre><code>vagrant@no-excuses:/vagrant$ bin/behat --init
++d features - place your *.feature files here
++d features/bootstrap - place your context classes here
++f features/bootstrap/FeatureContext.php - place your definitions, transformations and hooks here
+</code></pre>
+
+<p>These are directories and files that Behat has set up for you. Run <code>bin/behat -dl</code> and you can see all the predefined step definitions that we can use to start writing tests.</p>
+
+<h3 id="step-two%3A-write-our-first-test.">Step Two: Write our first test.</h3>
+
+<p>Let's write a test then.</p>
+
+<p>Inside the <code>features</code> directory that Behat created for you, make a test file called <code>installation.feature</code>. We are going to add a test that verifies a.) the site is up, and b.) that a user can login.
+Put this into your newly created file, add this:</p>
+
+<pre><code>@api
+Feature: Installation Verification
+  As a developer,
+  I want to know that my project has installed,
+  So that I can smoke test craychee's work.
+
+  Scenario: Verify that the site and its variables are installed.
+    Given I am on homepage
+    Then I should see the text "Welcome to no-excuses"
+
+  Scenario: Verify that user 1 can log into the site.
+    Given I am not logged in
+    When I visit "user/login"
+    And I fill in "name" with "admin"
+    And I fill in "pass" with "admin"
+    And I press "Log in"
+    Then I should see the link "Log out"
+    And I should see the link "Add content"
+</code></pre>
+
+<p>Note that the text "Welcome to no-excuses" is the text that I am expecting since "no-excuses" is the name of my example project. This text will be different if you have named you project something other than "no-excuses".</p>
+
+<p>Now let's run this locally. From inside your project's root (inside your vagrant box), run <code>bin/behat</code> and your test suite will run. If your project is built successfully, everything should pass.</p>
+
+<p>This test is a great start because it allows us to verify that our site is built properly and we can log into it as expected. This is especially important if we are testing our build without access to a browser GUI, such as on a CI Server.</p>
+
+<h3 id="step-three%3A-run-that-test-on-a-ci-server">Step Three: Run that test on a CI Server</h3>
+
+<p><strong>Prerequisites setup</strong><br />
+You need to have a <a href="https://github.com/">GitHub</a> account.<br />
+You need to make <a href="https://help.github.com/articles/create-a-repo/">your project a repository</a> on your GitHub account.<br />
+Sign up for a free account on <a href="https://circleci.com/">circleCI</a>.</p>
+
+<p>Great. Now we are going to add some files to explain to circleCI how to build our Drupal project in the same way that we are building our Drupal project locally. I go through a bit more explanation about what I am doing in the <a href="http://craychee.io/blog/2015/04/11/circleci/">previous blog post</a>. For now, you are going to need to just trust me. Yikes.</p>
+
+<p>First, navigate to your <code>cnf</code> directory and create a file called <code>circle.conf</code>. Add these contents:</p>
+
+<pre><code class="conf">&lt;VirtualHost *:80&gt;
+    UseCanonicalName Off
+    DocumentRoot %HOME%/%PROJECT_DIR%
+    ServerName %SERVER%
+
+  &lt;Directory %HOME%/*&gt;
+    Options FollowSymLinks
+    AllowOverride None
+    RewriteEngine On
+    RewriteBase /
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule %HOME%/%PROJECT_DIR%/(.*)$ index.php/?q=$1 [L,QSA]
+    Order allow,deny
+    Allow from all
+  &lt;/Directory&gt;
+
+  &lt;Directory /&gt;
+    Options FollowSymLinks
+    AllowOverride None
+  &lt;/Directory&gt;
+&lt;/VirtualHost&gt;
+</code></pre>
+
+<p>This is the webserver configuration for our project, so Apache2 knows where Drupal is.</p>
+
+<p>While still inside <code>cnf</code>, create a file called <code>circle.settings.php</code>. Add these contents:</p>
+
+<pre><code class="php">&lt;?php
+$db_url='mysql://ubuntu:@localhost/circle_test';
+$databases=array('default' =&gt; array(
+    'default' =&gt; array(
+        'database' =&gt; 'circle_test',
+        'username' =&gt; 'ubuntu',
+        'password' =&gt; '',
+        'driver' =&gt; 'mysql',
+        'host' =&gt; '127.0.0.1',
+    ),
+),);
+require_once DRUPAL_ROOT . '/sites/default/vendor/autoload.php';
+</code></pre>
+
+<p>Remember how we set up the build to just copy in the <code>settings.php</code> into Drupal before running site install because the connection information would be different per environment? (Note that you don't need the <code>require_once</code> line if you aren't using Composer to manage Drupal.)</p>
+
+<p>Now return to the project root. Create a file called <code>circle.yml</code> and add these contents:</p>
+
+<pre><code class="yml">machine:
+  php:
+    version: 5.5.21
+
+dependencies:
+  pre:
+    - cp $HOME/$CIRCLE_PROJECT_REPONAME/cnf/circle.conf /etc/apache2/sites-available/default
+    - sudo sed -e "s?%HOME%?$(pwd)?g" --in-place /etc/apache2/sites-available/default
+    - sudo sed -e "s?%PROJECT_DIR%?www?g" --in-place /etc/apache2/sites-available/default
+    - echo "sendmail_path=/bin/true" &gt;&gt; ~/.phpenv/versions/$(phpenv version-name)/etc/php.ini
+    - sudo a2enmod rewrite
+    - sudo service apache2 restart
+    - cp cnf/circle.settings.php cnf/settings.php
+  override:
+    - composer install --prefer-dist
+  post:
+    - sudo chown -R $(whoami):www-data www
+    - build/install.sh
+
+test:
+  override:
+      - bin/behat
+</code></pre>
+
+<p>These are instructions for circleCI to build our project and, after configuring Apache2, they are identical from our local build: run <code>composer install</code> and then <code>build/install.sh</code> to build the project, then run <code>bin/behat</code> to verify everything is working as expected.</p>
+
+<p>Since circleCI doesn't have Drush installed and our version of Drush, installed with <code>apt-get</code>, is outdated anyway, we added Drush to the project with composer instead. Now we can tell our build to use that version of Drush instead when building our project.</p>
+
+<p>Open your <code>build/install.sh</code> for editing. Where we are setting the <code>drush</code> variable (line 6), change it instead to:</p>
+
+<pre><code class="sh">drush="$base/bin/drush $drush_flags -y -r $base/www"
+</code></pre>
+
+<p>Great. Now circleCI will be able to use the same version of Drush that we are.</p>
+
+<p>Make sure all your files are added and pushed to GitHub. (If you are new to GitHub, <a href="https://help.github.com/articles/adding-an-existing-project-to-github-using-the-command-line/">this</a> should get you started.) Go to <a href="https://circleci.com/add-projects">add projects</a>, find your project, and click "Build Project".</p>
+
+<p>Now sit back and watch your project build and test itself.</p>
+
+<p><strong>Want to make sure you followed all of my instructions?</strong>
+You can view/fork my no-excuses-example <a href="https://github.com/craychee/no-excuses-Drupal/tree/0.4.0">here</a>.</p>
+
+<h4 id="great-...now-what%3F">Great ...Now what?</h4>
+
+<p>You are going to need to catch yourself up on writing tests for Drupal with Behat. I recommend <a href="https://www.youtube.com/watch?v=i6-940AnZxc">Jack Franks talk</a>.</p>
+
+<p>When should you write tests? Early and often.</p>
+
+<p>Up Next: <strong><a href="/blog/2015/08/08/no-excuses-part5-deployment/">No Excuses Part V: Automated Deployment</a></strong></p>
+]]></content>
+        </entry>
+            <entry>
+            <title type="html"><![CDATA[No Excuses Part III: Build drupal with Composer]]></title>
+            <link href="/blog/2015/08/01/no-excuses-part3-composer"/>
+            <updated>2015-08-01T00:00:00+00:00</updated>
+            <id>/blog/2015/08/01/no-excuses-part3-composer</id>
+            <content type="html"><![CDATA[<p><strong>NOTE</strong> This post is a continuation of <a href="/blog/2015/05/20/no-excuse-config-management-drupal">No Excuses Part I</a>, and <a href="/blog/2015/07/29/no-excuses-part2-drupal-config">No Excuses Part II</a>.</p>
+
+<p>There is no getting around using composer. If you are going to continue to develop modern php applications (including with Drupal) composer is <em>the</em> dependency manager for PHP.  We will be using composer to install <code>behat</code> in the next part so although you could skip this part and go right to testing, you can't completely avoid it.</p>
+
+<p>Might as well stop with the excuses and start managing your project's dependencies (which includes Drupal itself) with composer.</p>
+
+<h3 id="step-one%3A-generate-your-composer">Step One: Generate Your composer</h3>
+
+<p>Ensure that you are inside your virtual machine (<code>vagrant ssh</code>) and navigate to the project root (<code>/vagrant</code>, <strong>not</strong> <code>~/vagrant</code>). Run <code>composer init</code> to walk through the creation of our first composer project.</p>
+
+<p>Let's do this.</p>
+
+<p><strong>Package name:</strong> the convention here is <code>organization/project_name</code> (like on github). My project will be <code>craychee/no-excuses</code>.<br />
+<strong>Description:</strong> Help yourself and others who look at your project by explaining what it is. My project can be described as <code>The companion example repository for the No Excuses blog series on http://craychee.io.</code><br />
+<strong>Author:</strong> Take proper credit/responsibility for your work. The format is strictly enforced here. This is what my byline looks like: <code>Michelle Krejci &lt;michelle@craychee.io&gt;</code>.<br />
+<strong>Minimum Stability:</strong> Our minimal stability is the only stability we have: <code>dev</code>.<br />
+<strong>Package Type:</strong> <code>project</code><br />
+<strong>License:</strong> Your project is proprietary unless you specify otherwise. I will choose <code>GPL-2.0</code>.</p>
+
+<p>You will now be asked if you would you like to define your dependencies interactively. We have another step that we need to take care of first so answer "no" to the questions about dependencies and then confirm its generation.</p>
+
+<p>You can read more about composer's scheme <a href="https://getcomposer.org/doc/04-schema.md">here</a>.</p>
+
+<h3 id="step-two%3A-make-drupal-a-dependency">Step Two: Make drupal a Dependency</h3>
+
+<p>We need to use the drupal-composer <a href="https://packagist.drupal-composer.org/">packagist</a> repository. This wonderful project mirrors all of drupal.org's projects for composer, which we will need since we want projects from drupal.org installed via composer.</p>
+
+<p>Add this to the <code>composer.json</code>:</p>
+
+<pre><code class="json">[...]
+"repositories": [
+    {
+        "type": "composer",
+        "url": "http://packagist.drupal-composer.org/"
+    }
+],
+</code></pre>
+
+<p>If you aren't hosting with <a href="https://pantheon.io/">Pantheon</a> or don't otherwise prefer <a href="https://github.com/pantheon-systems/drops-7">drops-7</a>, you can now just add drupal as a requirement with:</p>
+
+<pre><code class="json">"require": {
+        "drupal/drupal": "7.38"
+        }
+</code></pre>
+
+<p><strong>A note on versioning:</strong><br />
+The versioning works here the same as it does on drupal.org.</p>
+
+<p>If you host with Pantheon or otherwise just prefer drops-7, you have just a bit more work. Inside the <code>repository</code> array, under where we have added the packagist.drupal-composer.org repository, add:</p>
+
+<pre><code class="json">{
+"repositories": [
+    [...]
+{
+    "type": "package",
+    "package": {
+        "name": "pantheon-systems/drops-7",
+        "type": "drupal-core",
+         "version": "7.38",
+         "source": {
+         "url": "https://github.com/pantheon-systems/drops-7.git",
+         "type": "git",
+         "reference": "master"
+         },
+         "replace": {
+             "drupal/drupal": "self.version",
+             "drupal/field": "self.version",
+             "drupal/file": "self.version",
+             "drupal/system": "self.version",
+             "drupal/path": "self.version"
+         }
+    }
+}
+],
+</code></pre>
+
+<p>Then under <code>require</code> we will add:</p>
+
+<pre><code class="json">"require": {
+        "pantheon-systems/drops-7": "7.38",
+        }
+</code></pre>
+
+<p>We just told composer that we want to use <code>pantheon-systems</code>'s repository. Any repository that depends on <code>drupal/drupal</code> or modules that drupal core contains should be replaced by <code>pantheon-systems</code>, which is more than capable of fulfilling all of your Drupal needs. For example, <code>drupal/pathauto</code> (a mirror of https://www.drupal.org/project/pathauto), depends on <code>drupal/path</code>, which is part of core. The drupal composer project expects that drupal core is <code>drupal/drupal</code>, so here we are saying that <code>pantheon-systems/drops-7</code> can satisfy that requirement instead.</p>
+
+<p><strong>Note</strong> that I only listed a few drupal core modules here (<code>field</code>, <code>file</code>, <code>system</code>, <code>path</code>). I did this only for brevity. You can either list all of drupal's core modules so that you don't need to add additional dependencies or you can list them all, as this <a href="https://github.com/pantheon-systems/example-drupal7-travis-composer/blob/master/composer.json">example repository</a> does, or you can take it on a case by case basis.</p>
+
+<p>Now your <code>composer.json</code> should look either something like this:</p>
+
+<pre><code class="json">{
+    "name": "craychee/no-excuses",
+    "description": "The companion example repository for the No Excuses blog series on http://craychee.io.",
+    "type": "project",
+    "license": "GPL-2.0",
+    "authors": [
+        {
+            "name": "Michelle Krejci",
+            "email": "michelle@craychee.io"
+        }
+    ],
+    "minimum-stability": "dev",
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "http://packagist.drupal-composer.org/"
+        }
+    ],
+    "require": {
+        "drupal/drupal": "7.38"
+    }
+}
+</code></pre>
+
+<p>Or this:</p>
+
+<pre><code class="json">{
+    [...]
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "http://packagist.drupal-composer.org/"
+        },
+        {
+            "type": "package",
+            "package": {
+                "name": "pantheon-systems/drops-7",
+                "type": "drupal-core",
+                "version": "7.38",
+                "source": {
+                    "url": "https://github.com/pantheon-systems/drops-7.git",
+                    "type": "git",
+                    "reference": "master"
+                },
+                "replace": {
+                    "drupal/drupal": "self.version",
+                    "drupal/field": "self.version",
+                    "drupal/file": "self.version",
+                    "drupal/system": "self.version",
+                    "drupal/path": "self.version"
+                }
+            }
+        }
+    ],
+    "require": {
+        "pantheon-systems/drops-7": "7.38"
+    },
+}
+</code></pre>
+
+<h3 id="step-three%3A-install">Step Three: Install</h3>
+
+<p>From inside your virtual machine, run <code>composer install</code>. Drupal will be installed inside <code>vendor</code>.</p>
+
+<p>This might take a while initially. You get a cup of coffee OR head over to <a href="http://drupal-composer.org/">http://drupal-composer.org/</a> and make a donation. The packagist account that we are using is supported by donations.</p>
+
+<h3 id="step-four%3A-add-a-drupal-module-to-the-dependencies.">Step Four: Add a drupal module to the dependencies.</h3>
+
+<p>Add this to your <code>composer.json</code>:</p>
+
+<pre><code class="json">"require": {
+[...]
+        "drupal/features": "~7.2",
+        }
+</code></pre>
+
+<p>And run <code>composer update</code> to install.</p>
+
+<h3 id="step-five%3A-make-the-drupal-root-that-drupal-expects.">Step Five: Make the drupal root that drupal expects.</h3>
+
+<p>We now have our Drupal root inside <code>vendor/drupal/drupal</code> (or <code>vendor/pantheon-systems/drupal</code>) and our first Drupal contrib module inside <code>vendor/drupal/features</code>.</p>
+
+<p>Brilliant. Now how do we make a Drupal root?</p>
+
+<p>You have a number of options. Greg Anderson describes his method of using drupal installers <a href="https://pantheon.io/blog/example-repository-build-drupal-composer-travis">here</a>. In this method, Drupal doesn't hit <code>vendor</code>. Drupal is assembled with composer. This method is similar to the method described on <a href="https://www.drupal.org/node/2471553">drupal.org</a>.</p>
+
+<p>For reasons that are beyond the scope of this blog series, I prefer to let composer do its thing (install inside <code>vendor</code>) and I then assemble Drupal root using a symphony2 library. There is safety in numbers, so if you prefer to follow the installer path method, I won't be disappointed in you.</p>
+
+<p>If you do want to stick with me here, we are going to require said library:</p>
+
+<pre><code class="json">"require": {
+[...]
+        "craychee/rootcanal": "dev-master",
+        }
+</code></pre>
+
+<p>And now under the <code>require</code> section, add:</p>
+
+<pre><code class="json">    "config": {
+        "bin-dir": "bin"
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "bin/rootcanal"
+        ],
+        "post-update-cmd": [
+            "bin/rootcanal"
+        ]
+    }
+</code></pre>
+
+<p>Make sure that you have completely removed <code>www</code> from the project. We are going to put the creation of that root under composer's control.</p>
+
+<p>Now run <code>composer update</code>, followed by <code>build/install.sh</code>.</p>
+
+<p>Check the contents of your newly created <code>www</code> to ensure that you have your Drupal root. Or better still, visit <code>http://192.168.33.99/</code>, log in, and ensure that <code>features</code> is available for you to enable now.</p>
+
+<p>One more thing, add this to the bottom of your <code>local.settings.php</code>:</p>
+
+<pre><code class="php">require_once DRUPAL_ROOT . '/sites/default/vendor/autoload.php';
+</code></pre>
+
+<h3 id="step-six%3A-add-this-to-our-vagrant-provision">Step Six: Add this to our vagrant provision</h3>
+
+<p>Open your <code>Vagrantfile</code> and insert a <code>composer install</code> before your build:</p>
+
+<pre><code class="sh">  config.vm.provision :shell, inline: &lt;&lt;SCRIPT
+  if [[ ! -f /vagrant/cnf/settings.php ]]; then
+  cp /vagrant/cnf/local.settings.php /vagrant/cnf/settings.php
+  fi
+  su vagrant -c 'cd /vagrant &amp;&amp; composer install &amp;&amp; build/install.sh;'
+SCRIPT
+</code></pre>
+
+<p>Perfect. Our project dependencies will be added with <code>vagrant up</code>.</p>
+
+<p>Now all of our dependencies are being managed and assembled with composer, we have no need for <code>vendor</code> or <code>www</code> part of the project. Commit <code>composer.json</code> and <code>composer.lock</code> to the repository and open <code>.gitignore</code> and add <code>vendor</code>, <code>www</code>, and <code>bin</code>.</p>
+
+<p><strong>Want to make sure you followed all of my instructions?</strong>
+You can view/fork my no-excuses-example <a href="https://github.com/craychee/no-excuses-drupal/tree/0.3.0">here</a>.</p>
+
+<p><strong>Did you get an error?</strong>
+Occasionally I get an error that looks like <code>Failed to remove file "/vagrant/www/sites/default/vendor"</code>. I admit that I do not have a graceful way to resolve this. When I get this, from my host machine (i.e., not inside the vagrant box) I just blow away the <code>www</code> directory as a sudo user: <code>sudo rm -Rf www</code>. I will send one lemon-flavored toothpick to anyone who can resolve this for me on a more sustained basis.</p>
+
+<h4 id="great-...now-what%3F">Great ...Now what?</h4>
+
+<p>You will be adding <strong>contrib</strong> modules side <code>composer.json</code> (and running <code>composer update</code>) or you can use <code>composer require [...]</code>. As for the rest, if you are using my method of assembling Drupal root, you will add custom modules inside a <strong>modules</strong> directory inside the project root and custom themes inside <strong>themes</strong> directory. You will only be commiting your own work and configuration along with your composer.json.</p>
+
+<p>Up Next: <strong><a href="/blog/2015/08/04/no-excuses-part4-testing/">No Excuses Part IV: Time to test</a></strong></p>
+]]></content>
+        </entry>
+            <entry>
+            <title type="html"><![CDATA[No Excuses Part II: Making your Drupal Build explicit and executable]]></title>
+            <link href="/blog/2015/07/29/no-excuses-part2-drupal-config"/>
+            <updated>2015-07-29T00:00:00+00:00</updated>
+            <id>/blog/2015/07/29/no-excuses-part2-drupal-config</id>
+            <content type="html"><![CDATA[<p><strong>NOTE</strong> This post is a continuation of <a href="/blog/2015/05/20/no-excuse-config-management-drupal">No Excuses Part I</a>.</p>
+
+<p>SSH into your newly built machine by running <code>vagrant ssh</code>. Then navigate to <code>/vagrant/www</code> and run <code>drush si --db-url=mysql://default:default@localhost/default -y</code> (substituting whatever you set the user/password/database config to in Part I).</p>
+
+<p>That was fun. Let's not force ourselves to remember to do that all the time though.</p>
+
+<p>In order for this to be executable over and over in different environments and be able to accommodate the build as it gets more complicated, we need to do the following:</p>
+
+<ol>
+<li>Set up a <code>settings.php</code> for a local build (and discuss a good place to put this).</li>
+<li>Create a bash script of drush that can be executed outside of the Drupal root.</li>
+<li>Add this script to the <code>Vagrantfile</code> so that it runs on the build.</li>
+</ol>
+
+<h3 id="step-1.-get-your-settings-sorted.">Step 1. Get your settings sorted.</h3>
+
+<p>One of the benefits of working a known state is that connecting to the database will be the same for everyone. We can actually share a local <code>settings.php</code> without anyone else needing to think about it.</p>
+
+<p>Here is a <code>settings.php</code> that will connect with the environment we provisioned with ansible:</p>
+
+<pre><code class="php">&lt;?php
+$db_url='mysql://default:default@localhost/default';
+$databases=array('default' =&gt; array(
+    'default' =&gt; array(
+        'database' =&gt; 'default',
+        'username' =&gt; 'default',
+        'password' =&gt; 'default',
+        'driver' =&gt; 'mysql',
+        'host' =&gt; 'localhost',
+    ),
+),);
+</code></pre>
+
+<p>(Your database/username/password might be different depending on how you configured mariaDB. If you forgot, open up <code>ansible/vars/all.yml</code> and check.)</p>
+
+<p>This is going to work great locally but let's also think through the different environments that we are going to be building Drupal in.</p>
+
+<p>We know that we need at least <strong>test environment</strong> (like <a href="https://travis-ci.com/">travisCI</a> or <a href="https://circleci.com/about">circleCI</a> to test our deployment strategy and run our test suite) and a <strong>production environment</strong>. There are probably at least two more enivonments in between (e.g., <strong>development</strong>, for a stakeholders to view progress and <strong>staging</strong> for content entry or final approval). We aren't going to talk about those environments today but we will keep them in mind for how we set up our build script.</p>
+
+<p>Let's create a new directory inside the project root called <code>cnf</code> to manage all such environment-specific configuration as we create them. Move the <code>settings.php</code> we just created into the <code>cnf</code> directory. We will rename it later but for now, let's move on to creating a script that will add this <code>settings.php</code> to our project and then bootstrap Drupal.</p>
+
+<h3 id="step-2.-create-a-bash-script.">Step 2. Create a bash script.</h3>
+
+<p>Create a file called <code>install.sh</code>. Open it and add a shebang and <code>set -e</code> (to exit on an error) at the top.</p>
+
+<pre><code class="sh">#!/bin/bash
+
+set -e
+</code></pre>
+
+<p>Let's not add this to the project root but a directory of its own, like we did with settings. Create a directory called <code>build</code> and move <code>install.sh</code> there.</p>
+
+<p>Remember that we ultimately want a site install to happen when we run our script. We started by manually running <code>drush si</code> and passed through database parameters. We created a settings file but we need to get it into the <code>sites/default/</code> directory of our Drupal and then pipe drush commands to the project.</p>
+
+<p>In order to do this, we need to give bash some information: where we are, where the project is relative to where we are, and what to do with our drush commands. That looks like this:</p>
+
+<pre><code class="sh">#!/bin/bash
+
+set -e
+
+path=$(dirname "$0")
+base=$(cd $path/.. &amp;&amp; pwd)
+drush="drush $drush_flags -y -r $base/www"
+</code></pre>
+
+<p>Now when you run <code>install.sh</code>, <code>$path</code> is assigned the value of the location of the path of the bash script relative to where you ran it from. <code>$base</code> is one directory down from there, which is the project root. Finally, we are telling bash that when we use <code>$drush</code>, all arguments that follow are <code>$drush flags</code> and we always pass <code>-y</code> flag after those arguments and execute those commands from inside our project (<code>$base</code>)/www directory (where we keep our Drupal root).</p>
+
+<p>Now that we taught bash those variables, we can do what we need to do: copy our <code>settings.php</code> into Drupal and execute a drush command.</p>
+
+<pre><code class="sh">#!/bin/bash
+
+set -e
+
+path=$(dirname "$0")
+base=$(cd $path/.. &amp;&amp; pwd)
+drush="drush $drush_flags -y -r $base/www"
+
+chmod -R +w $base/www/sites/default
+chmod -R +w $base/cnf
+
+echo "Symlink settings.php into our Drupal."
+ln -sf $base/cnf/settings.php $base/www/sites/default/
+echo "Installing Drupal like a boss."
+$drush si --site-name=no-excuses --account-pass=admin
+</code></pre>
+
+<p>This is what we did: made the source and the destination of our settings config writeable (Drupal has an annoying habit of setting permissions for you), symlinked <code>settings.php</code> into where it belongs, and then ran <code>drush si</code> with a few variables passed through to make our lives easier.</p>
+
+<p>At this point you should be able reliably build your Drupal project again and again with this script. Navigate to <code>192.168.33.99</code> and log in with admin/admin to see the result.</p>
+
+<h3 id="step-3.-make-this-script-run-when-vagrant-builds.">Step 3. Make this script run when Vagrant builds.</h3>
+
+<p>Our goal now is to have the Drupal build when we run <code>vagrant up</code> so that when cloning the project, assuming the developer has met the system requirements (e.g. VirtualBox, Ansible, vagrant), this is all that they need to run to get start developing where you left off. Everyone building the project the same way, over and over again, speeds up development and reduces human error.</p>
+
+<p>We have one script that we need to run: <code>install.sh</code>. Adding it to the bottom of our <code>Vagrantfile</code> looks like this:</p>
+
+<pre><code class="sh">  config.vm.provision :shell, inline: &lt;&lt;SCRIPT
+  su vagrant -c 'cd /vagrant &amp;&amp; build/install.sh;'
+SCRIPT
+</code></pre>
+
+<p>Done.</p>
+
+<p>Our <code>settings.php</code> strategy will need to accommodate different <code>settings.php</code>, depending on the environment. We want the same build script to build the project the same way no matter what the environment.</p>
+
+<p>There are a number of ways to handle environment-specific config. This is how we are going to do it:</p>
+
+<ol>
+<li>Rename the <code>settings.php</code> inside <code>cnf</code> to <code>local.settings.php</code>.</li>
+<li>Edit your <code>.gitignore</code> and add <code>settings.php</code>. (While you are at it, make sure <code>.vagrant</code> is in the <code>.gitignore</code> too.)</li>
+<li>Add this to our <code>Vagrantfile</code> config:</li>
+</ol>
+
+<pre><code class="sh">  config.vm.provision :shell, inline: &lt;&lt;SCRIPT
+  if [[ ! -f /vagrant/cnf/settings.php ]]; then
+  cp /vagrant/cnf/local.settings.php /vagrant/cnf/settings.php
+  fi
+  su vagrant -c 'cd /vagrant &amp;&amp; build/install.sh;'
+SCRIPT
+</code></pre>
+
+<p>Great. Now, when vagrant provisions, it will check if there is a <code>settings.php</code> and copy the local settings if there isn't.</p>
+
+<p>Repeatable, maintainable, executable Drupal build: check.</p>
+
+<p><strong>Want to make sure you followed all of my instructions?</strong>
+You can view/fork my no-excuses-example <a href="https://github.com/craychee/no-excuses-Drupal/tree/0.2.0">here</a>. I feel confident that you figured it out.</p>
+
+<h4 id="great-...now-what%3F">Great ...Now what?</h4>
+
+<p>You will presumably do other things with Drupal besides run install. Your script might start to look like:</p>
+
+<pre><code class="sh">#!/bin/bash
+
+set -e
+
+path=$(dirname "$0")
+base=$(cd $path/.. &amp;&amp; pwd)
+drush="drush $drush_flags -y -r $base/www"
+
+chmod -R +w $base/www/sites/default
+chmod -R +w $base/cnf
+
+echo "Symlink settings.php into our Drupal."
+ln -sf $base/cnf/settings.php $base/www/sites/default/
+echo "Installing Drupal like a boss."
+$drush si --site-name=no-excuses --account-pass=admin
+echo "Install high level module containing all project dependencies."
+$drush en my_module_to_rule_all_modules
+$drush fra
+$drush updb
+$drush cc all
+</code></pre>
+
+<p>Note that you can always just directly run this script (by running <code>build/install.sh</code>) from inside of the vagrant box any time you would like. The more you do this, the better. If you want to trigger vagrant to do it, you can run <code>vagrant provision</code>, which will run both the ansible and the shell commands, or <code>vagrant provision --provision-with shell</code> to just run the install. I think you will find that your workflow will have you building the environment at the start of the day but just running the build script (<code>install.sh</code>) directly many times over daily.</p>
+
+<p>Now that we have our environment and our project locked down in a known state, we can finally add tests. BUT before we do that, we are going to take a quick detour and better manage our Drupal.</p>
+
+<p>Up Next <strong><a href="/blog/2015/08/01/no-excuses-part3-composer/">No Excuses Part III: Building Drupal with Composer</a></strong></p>
+]]></content>
+        </entry>
+            <entry>
+            <title type="html"><![CDATA[No Excuses Part I: Drupal-optomized Environment Config with (Ph)Ansible and Vagrant]]></title>
+            <link href="/blog/2015/05/20/no-excuse-config-management-drupal"/>
+            <updated>2015-05-20T00:00:00+00:00</updated>
+            <id>/blog/2015/05/20/no-excuse-config-management-drupal</id>
+            <content type="html"><![CDATA[<p><strong>UPDATE</strong> <a href="http://jeffgeerling.com/">Jeff Geerling</a> is offering a coupon for 50% off the recommended price for his recently published book <em>Ansible for DevOps: Server and configuration management for humans</em> to reader's of this series who want to learn more about Ansible: <a href="http://leanpub.com/ansible-for-devops/c/zDAUa4QMP1CL">http://leanpub.com/ansible-for-devops/c/zDAUa4QMP1CL)</a>. If I do my job right, that will be everyone.</p>
+
+<p>Building your Drupal project in a known-state is the foundation of your Continuous Integration process.  You want to write and execute tests---and you should!--but your tests won't mean anything if you cannot define and build inside a known-state. Get your system under control first, then we will talk about getting your Drupal application under control.</p>
+
+<p>Ansible has obliterated any stale scraps of lame excuses you might still cling to when it comes to putting off making your environment configuration explicit and version controlled:</p>
+
+<blockquote>
+  <p>"I don't have time to learn a new language."<br />
+  "We do not have any resources to manage it."<br />
+  "The learning curve is too steep."</p>
+</blockquote>
+
+<p>While these excuses may have (barely) held when the configuration options were Chef, Puppet, and Salt, <a href="http://www.ansible.com/home">Ansible</a> is so breathtakingly easy (it is just yml), you are embarassing yourself if you wait any longer.</p>
+
+<p>So don't.</p>
+
+<p>With <a href="http://phansible.com/">Phansible</a>, a point-and-click Ansible configuration maker for php envionments, you can get going even faster with more time to shame others who are dragging their feet.</p>
+
+<h2 id="local-environment-config-in-3-easy-steps">Local environment config in 3 Easy Steps</h2>
+
+<p><strong>NOTE</strong> This particular example is tuned for a <a href="https://pantheon.io/">Pantheon</a> environment. You should always tune your local environment as much as possible to your target production environment. Pantheon's <a href="https://pantheon.io/platform/our-architecture">architecture</a> is opinionated toward performance. My preference is for highly opinionated software and infastructure, so Pantheon is my Drupal hosting platform choice. I will walk through tuning a <code>mod_php</code>/<code>Apache</code> environment at some later point.</p>
+
+<h3 id="step-1.-point-and-click-config">Step 1. Point and click config</h3>
+
+<p>Go over to <a href="http://phansible.com/">Phansible</a>. There are 6 configuration sections.</p>
+
+<ul>
+<li><p><strong>Machine Settings</strong><br />
+Under the <a href="http://phansible.com/#section-vagrant">vagrant</a> section, change the <strong>hostname</strong> to something that reflects your project. I will call mine <code>no-excuses</code>. Bump your <strong>memory</strong> to <code>2048</code>.</p></li>
+<li><p><strong>System packages</strong><br />
+We don't have a lot of options here. Add <code>git</code> and <code>vim</code>. We will manually add a few more that Drupal needs later.</p></li>
+<li><p><strong>Webserver</strong><br />
+Under <strong>Document Root</strong>, change it to <code>/vagrant/www</code>. Accept all of the other <a href="http://phansible.com/#section-webserver">webserver</a> defaults. (The webserver defaults are <code>nginx</code> and <code>php5-fpm</code>, which happens to be Pantheon's architecture too. If you are partial to Apache2 and feel comfortable deviating from my instructions here, you have my blessing. There is not much difference where we are concerned here.)</p></li>
+<li><p><strong>Languages</strong>
+Choose and add the following configuration options:</p>
+
+<p>Php version: 5.6<br />
+Composer: enabled<br />
+Xdebug: enabled<br />
+php packages: <code>php5-gd, php5-cli, php5-curl, php5-mcrypt, php5-mysql, php5-xdebug</code></p></li>
+<li><p><strong>Database</strong><br />
+Install MariaDB. Set a <strong>root password</strong> that you will remember (this is just a local enviroment). Create a default database and username/password for your local Drupal project. (I, for example, always use <code>default</code> as the database name, username, and password.)</p></li>
+<li><p><strong>Timezone</strong><br />
+Set the timezone to wherever you are / wherever is closest to where you are. I am in Chicago, so I select <code>America/Chicago</code>.</p>
+
+<h4 id="press-the-big-%60generate%60-button.">Press the big <code>Generate</code> button.</h4>
+
+<p>Go find someone to brag to about putting your system configuration into code.</p></li>
+</ul>
+
+<h3 id="2.-open-up-the-zip-package-and-add-additional-packages.">2. Open up the zip package and add additional packages.</h3>
+
+<p>Open <code>ansible/vars/all.yml</code>.<br />
+To the <code>php:packages</code> array, add <code>php5-dev</code>.<br />
+To the <code>server:packages</code> array, add:  <code>[sendmail, drush ,unzip, zip, g++, libssl-dev, apache2-utils]</code>.</p>
+
+<h3 id="3.-test-that-this-can-stand-up-an-actual-drupal">3. Test that this can stand up an actual Drupal</h3>
+
+<p>Make sure that the following are installed on your computer:</p>
+
+<ul>
+<li><a href="https://www.virtualbox.org/wiki/Downloads">virtualBox</a> >= 4.3.x</li>
+<li><a href="http://downloads.vagrantup.com/">vagrant</a> >= 1.6.x</li>
+<li><a href="http://docs.ansible.com/ansible/intro_installation.html#installing-the-control-machine">ansible</a> >= 1.8.x</li>
+</ul>
+
+<p>Go download the latest version of Drupal either with drush or from <a href="https://www.Drupal.org/project/Drupal">here</a>. Unzip/Untar (if you downloaded without drush), move it inside your phansible directory and rename it <code>www</code> (remember when we set the name of the Document Root?). Your project directory should now contain two directories, <strong>ansible</strong> and <strong>www</strong>, and one file, <code>Vagrantfile</code>.</p>
+
+<p>Run <code>vagrant up</code>.</p>
+
+<p>When asked for a password, enter your machine's sudo password.</p>
+
+<p>You may get the error <code>ERROR: The file ansible/inventories/dev is marked as executable, but failed to execute correctly.</code>. If so, just run <code>chmod -x ansible/inventories/dev</code> and start the provisioning process up again by running <code>vagrant provision</code>.</p>
+
+<p>Watch as ansible builds your system. Go find another person to high five.</p>
+
+<p>When it finishes, visit <code>192.168.33.99</code> on your local. You should have a Drupal there ready to be installed.</p>
+
+<p><strong>Want to make sure you followed all of my instructions?</strong>
+You can view/fork my no-excuses-example <a href="https://github.com/craychee/no-excuses-Drupal/tree/0.1.0">here</a>. I feel confident that you figured it out.</p>
+
+<p><strong>Did something go wrong?</strong>
+You may get an error like:</p>
+
+<pre><code>==&gt; default: Exporting NFS shared folders...
+NFS is reporting that your exports file is invalid. Vagrant does
+this check before making any changes to the file. Please correct
+the issues below and execute "vagrant reload":
+</code></pre>
+
+<p>If so, remove your <code>exports</code> file (on a Mac, that would be <code>sudo rm /etc/exports</code>) and run <code>vagrant reload</code> again.</p>
+
+<p>You should take some time to read through Vagrant's <a href="http://docs.vagrantup.com/v2/getting-started/">documentation</a> to bring yourself up to speed with the basics.</p>
+
+<h4 id="so...-now-what%3F">So... now what?</h4>
+
+<p>Sure you could point and click through the install (remember what database, user, and password you set up for MariaDB, or look at your code config inside <code>ansible/vars/all.yml</code>), but now that you have put your system requirements explicit (in code) and executable, don't you want to make your Drupal build executable too?</p>
+
+<p>Of course you do. Read more: <strong><a href="/blog/2015/07/29/no-excuses-part2-drupal-config/">No Excuses Part II: Making your Drupal Build explicit and executable</a></strong></p>
+]]></content>
+        </entry>
+            <entry>
+            <title type="html"><![CDATA[Testing and Deploying Sculpin to github pages on CircleCI]]></title>
+            <link href="/blog/2015/04/20/deploy-and-test-sculpin"/>
+            <updated>2015-04-20T00:00:00+00:00</updated>
+            <id>/blog/2015/04/20/deploy-and-test-sculpin</id>
+            <content type="html"><![CDATA[<p>My setup here was adapted from <a href="http://wouterj.nl/2015/02/using-travis-to-build-your-sculpin-blog/">this excellent Wouter de Jong</a> post, which described automated deployment of sculpin using <code>travisci</code>, for <a href="https://circleci.com">Circleci</a> and testing with <a href="http://docs.behat.org/en/v3.0/">behat</a>. The original blog should absolutely be read first.</p>
+
+<p>Here is what my <code>circle.yml</code> for deploying this sculpin blog looks like:</p>
+
+<pre><code>machine:
+  php:
+    version: 5.5.11
+  hosts:
+    craychee.local: 127.0.0.1
+
+dependencies:
+  pre:
+  - curl -O https://download.sculpin.io/sculpin.phar
+  - php sculpin.phar install
+  - cp circle.conf /etc/apache2/sites-available/default
+  - sudo sed -e "s?%HOME%?$(pwd)?g" --in-place /etc/apache2/sites-available/default
+  - sudo service apache2 restart
+  post:
+  - php sculpin.phar generate --env prod
+
+test:
+  override:
+      - bin/behat -f pretty
+
+deployment:
+  production:
+    branch: publish
+    commands:
+      - sh publish.sh
+</code></pre>
+
+<p>Once again, actually reading the <a href="https://circleci.com/docs/configuration">circleci documentation</a> will decrypt most of this for you, including variable names ("machine", "pre", "override", etc.).
+This is what I am doing differently than Wonter de Jung suggests.</p>
+
+<p><strong>I am installing sculpin from source rather than installing with <code>composer.json</code>.</strong></p>
+
+<pre><code class="php"># circle.yml
+...
+    dependencies:
+      pre:
+      - curl -O https://download.sculpin.io/sculpin.phar
+      - php sculpin.phar install
+...
+</code></pre>
+
+<p>Installing with composer is probably more professional, at least it is more customizable, but I had no such need.</p>
+
+<p><strong>I am pointing apache2 at my generated sculpin site.</strong></p>
+
+<p>I am building the production directory <code>output_prod</code> and running acceptance tests on it, only deploying if they pass. In order to do this, I need to set up a server to serve up the site for behat to crawl.</p>
+
+<pre><code class="php"># circle.yml
+...
+    dependencies:
+      pre:
+      ...
+      - cp circle.conf /etc/apache2/sites-available/default
+      - sudo sed -e "s?%HOME%?$(pwd)?g" --in-place /etc/apache2/sites-available/default
+      - sudo service apache2 restart
+...
+</code></pre>
+
+<p>Here is what my generic <code>circle.conf</code> looks like:</p>
+
+<pre><code>&lt;VirtualHost *:80&gt;
+    UseCanonicalName Off
+    DocumentRoot %HOME%/output_prod
+
+  &lt;Directory %HOME%/*&gt;
+    Options FollowSymLinks
+    AllowOverride None
+    Order allow,deny
+    Allow from all
+  &lt;/Directory&gt;
+
+&lt;/VirtualHost&gt;
+</code></pre>
+
+<p>The <code>%HOME%</code> variable was replaced inside the <code>circle.yml</code>:</p>
+
+<pre><code class="php">      - sudo sed -e "s?%HOME%?$(pwd)?g" --in-place /etc/apache2/sites-available/default
+</code></pre>
+
+<p>With all that setup, <strong>I can execute my behat test suite</strong> and deploy to github pages if all is well. I took entirely Wonter's recommendation for my <code>publish.sh</code>, only omitting the build of the <code>output_prod</code> directory.</p>
+
+<p>One last thing: I didn't need to set up a github token on <code>circleci</code> for deployment. This is either a feature of circleCI or a security breach on my part.</p>
+]]></content>
+        </entry>
+            <entry>
+            <title type="html"><![CDATA[Add this to your automated tests: check for overridden features]]></title>
+            <link href="/blog/2015/04/19/no-overridden-features"/>
+            <updated>2015-04-19T00:00:00+00:00</updated>
+            <id>/blog/2015/04/19/no-overridden-features</id>
+            <content type="html"><![CDATA[<p>If you are automating your Drupal tests, you have automated your Drupal build. If you have automated your Drupal build, you have exported your config. If you have exported your config, you are using features. If you are using features, it is only a matter of time before they are overridden and become a black hole of uselessness.</p>
+
+<p>Don't let that happen. You are doing everything else right.</p>
+
+<p>In your <code>circle.yml</code> or your <code>.travis.yml</code> add these lines:</p>
+
+<pre><code class="php"># Under your travis script or your circleci tests:
+...
+  - &gt;
+    drush fl
+    | grep -qi 'overridden'
+    &amp;&amp; (echo 'Feature override test: fail' &amp;&amp; exit 1)
+    || (echo 'Feature override test: pass' &amp;&amp; exit 0)
+</code></pre>
+
+<p>Guard your build from uncertainty.</p>
+]]></content>
+        </entry>
+    </feed>
