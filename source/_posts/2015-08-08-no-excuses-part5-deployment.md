@@ -70,6 +70,21 @@ PANTHEON_CODE This should be the repository URL for the project that you created
 
 **Note** that my instructions above have you deploy with your Pantheon user account. If you work on a team or for a dev shop, you should consider creating a separate user that has access to your sites that you use only for deployment.
 
+**UPDATE**
+A lot of people have written to say that they have had problems when composer installs on circleci. That's because GitHub will ask for an authentication token if it's being hit with too many requests (its rate limit).
+Here is the workaround.
+
+Visit your Github account. Under your settings, click *Personal Access Tokens*. Generate a token scoped to just "repo" like this one:
+
+![Github Token Generate screenshot](/img/github_token.png)
+
+After you clicked the *Generate Token* button, copy the new token. Create and save the following new variable:  
+GITHUB_TOKEN: The token you just copied to your clipboard.
+
+Add this at the top of your dependencies in your `circle.yml`:
+`- composer config --global github-oauth.github.com $GITHUB_TOKEN`
+[Here](https://github.com/craychee/no-excuses-drupal/blob/master/circle.yml#L7) is my example.
+
 ###Step Five: Add a deployment script
 
 Inside the `bin` directory, create a file called `deploy` and add these contents:
@@ -79,20 +94,14 @@ Inside the `bin` directory, create a file called `deploy` and add these contents
 set -e
 
 # Get Pantheon's Command Line Tool, terminus.
-sudo curl https://github.com/pantheon-systems/cli/releases/download/0.5.5/terminus.phar -L -o /usr/local/bin/terminus && sudo chmod +x /usr/local/bin/terminus
+sudo curl https://github.com/pantheon-systems/cli/releases/download/0.9.2/terminus.phar -L -o /usr/local/bin/terminus
+sudo chmod +x /usr/local/bin/terminus
 
 # Log into terminus.
 terminus auth login $PANTHEON_EMAIL --password=$PANTHEON_PASSWORD
 
 # Clone deployment repository.
-expect <<delim
-  set timeout 60
-  eval spawn git clone $PANTHEON_CODE pantheon
-  set prompt ":|#|\\\$"
-  interact -o -nobuffer -re $prompt return
-  send "$PANTHEON_PASSWORD\r"
-expect eof
-delim
+git clone $PANTHEON_CODE pantheon
 
 # Set variables
 path=$(dirname "$0")
@@ -127,6 +136,8 @@ git config --global user.name $CIRCLE_PROJECT_USERNAME
 # push to Pantheon
 (cd $pantheon ; git push -f origin master)
 ~~~
+**NOTE:** Since the original publication of this post, I have updated this script to remove a completely unnecessary expect call.
+
 This script gets [terminus](https://github.com/pantheon-systems/cli), Pantheon's command line tool, gets Pantheon's repository, rebuilds the Drupal root by coping everything over (use only if you are building Drupal with Composer using my suggested method, per [Part III](blog/2015/08/01/no-excuses-part3-composer/)), and then forceably commits only the Drupal root (not any of your provisioning or your `Vagrantfile`) to its repository. Your production repository will be a separate repository that is just an *artifact* of development.
 
 Make sure that you update your `.gitignore` (if you are ignoring any executables in `bin`) so that you can ensure that this file is saved to your repository.
